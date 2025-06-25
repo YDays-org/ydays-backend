@@ -1,0 +1,111 @@
+YDAYS 2025
+Solution de découverte et de réservation d'activités locales
+
+1- Contexte :
+Vous êtes une jeune startup spécialisée dans le développement de solutions informatiques innovantes et vous avez décidé de participer à une compétition de conception et mise en œuvre d'une plateforme de découverte et de réservation d'activités locales pour la ville de Casablanca.
+L'objectif principal est de développer une plateforme web et une application mobile conviviales et efficaces permettant aux habitants et aux visiteurs de Casablanca de découvrir facilement une variété d'activités, d'événements culturels et de restaurants, et de pouvoir les réserver directement via la plateforme. L'accent sera mis sur une expérience utilisateur fluide, des informations complètes et une intégration de la géolocalisation pour une découverte de proximité.
+
+2- Public cible :
+*   Résidents de Casablanca : Cherchant des idées de sorties, de nouvelles activités à essayer, des événements culturels à ne pas manquer ou des restaurants à découvrir dans leur ville.
+*   Touristes et Visiteurs : Ayant besoin d'un guide local numérique pour explorer Casablanca, trouver des activités et des lieux intéressants, et effectuer des réservations facilement.
+*   Organisateurs d'activités et d'événements : Souhaitant une plateforme pour promouvoir leurs offres et gérer les réservations.
+*   Propriétaires de restaurants : Désirant augmenter leur visibilité et faciliter les réservations.
+
+3- Fonctionnalités attendues :
+3.1. Pour les utilisateurs :
+*   Découverte :
+    *   Navigation intuitive : Menu clair avec des catégories prédéfinies (Activités, Événements, Restaurants, Tendances, Nouveautés).
+    *   Flux personnalisé : Affichage d'options recommandées en fonction des préférences de l'utilisateur (historique, favoris).
+    *   Recherche avancée : Filtrage par date, heure, prix, emplacement, type d'activité / événement / cuisine, commodités (parking, Wi-Fi, etc.).
+    *   Affichage de liste et de carte : Possibilité de visualiser les options sous forme de liste ou sur une carte interactive.
+    *   Géolocalisation : Affichage des options à proximité de l'utilisateur sur la carte et dans les listes, calcul d'itinéraires.
+    *   Fiches détaillées :
+        *   Nom, description complète, photos et vidéos de haute qualité.
+        *   Horaires d'ouverture, adresse, coordonnées (téléphone, site web, réseaux sociaux).
+        *   Tarifs (si applicable).
+        *   Avis et notes des utilisateurs.
+        *   Informations sur l'accessibilité.
+        *   Politique d'annulation et de remboursement.
+*   Réservation :
+    *   Calendrier de disponibilité : Affichage des dates et heures disponibles pour la réservation.
+    *   Sélection du nombre de participants/couverts.
+    *   Formulaire de réservation simple et rapide.
+    *   Intégration de systèmes de paiement sécurisés (cartes bancaires, paiement mobile local).
+    *   Confirmation de réservation instantanée (par email et notification push).
+    *   Gestion des réservations par l'utilisateur (consultation, modification, annulation selon les politiques).
+*   Interaction Utilisateur :
+    *   Création de compte et profil utilisateur.
+    *   Sauvegarde des favoris.
+    *   Historique des réservations.
+    *   Possibilité de laisser des avis et des notes.
+    *   Partage sur les réseaux sociaux.
+    *   Notifications push personnalisées (rappels de réservation, nouvelles offres, événements à proximité).
+
+3.2. Pour les partenaires (Organisateurs et Restaurateurs) :
+*   Tableau de bord personnalisé : Vue d'ensemble des réservations, des statistiques de performance, des avis.
+*   Gestion des annonces : Création, modification et suppression d'activités, d'événements et de restaurants.
+*   Gestion des disponibilités et des tarifs.
+*   Gestion des réservations : Confirmation, suivi, annulation.
+*   Outils de promotion : Possibilité de mettre en avant certaines offres.
+*   Gestion des avis et des réponses.
+*   Statistiques et rapports sur les performances.
+
+3.3. Géolocalisation :
+*   Intégration des APIs de localisation (GPS et services de localisation basés sur le réseau).
+*   Affichage des activités, événements et restaurants sur une carte interactive.
+*   Calcul de la distance entre l'utilisateur et les points d'intérêt.
+*   Fonctionnalité de recherche par proximité.
+*   Possibilité d'enregistrer des lieux favoris.
+
+3.4. Sécurisation :
+*   Authentification et autorisation sécurisées des utilisateurs et des partenaires.
+*   Protection des données sensibles par chiffrement (informations personnelles, données de paiement).
+*   Validation des entrées de données pour prévenir les attaques (injection SQL, XSS).
+*   Sécurité des APIs (protection contre les attaques courantes, limitation du taux de requêtes).
+*   Conformité avec les réglementations de protection des données.
+
+4- Les défis :
+4.1. Acquisition et Engagement des Utilisateurs :
+*   Concurrence : Le marché des plateformes de découverte et de réservation comporte des acteurs locaux ou internationaux. Se démarquer et attirer une base d'utilisateurs significative demandera une stratégie marketing efficace et une proposition de valeur unique.
+*   Adoption par les utilisateurs locaux : Convaincre les habitants de Casablanca d'adopter une nouvelle plateforme et de changer leurs habitudes de recherche et de réservation peut être un défi.
+*   Engagement à long terme : Maintenir l'intérêt des utilisateurs au-delà de la phase initiale nécessitera des mises à jour régulières de contenu, de nouvelles fonctionnalités et une expérience utilisateur toujours optimale.
+
+4.2. Acquisition et Gestion des Partenaires (Organisateurs et Restaurateurs) :
+*   Convaincre les partenaires de s'inscrire : Les organisateurs et restaurateurs peuvent déjà utiliser d'autres canaux de promotion et de réservation. Il faudra leur démontrer les avantages concrets de la plateforme (augmentation de la visibilité, gestion simplifiée, nouveaux clients).
+*   Gestion de la diversité des offres : Assurer une représentation large et variée des activités, événements et restaurants de Casablanca tout en maintenant une qualité d'information cohérente.
+*   Mise à jour des informations par les partenaires : S'assurer que les partenaires maintiennent leurs informations (disponibilités, tarifs, descriptions) à jour est crucial pour la fiabilité de la plateforme.
+*   Relation et support aux partenaires : Offrir un support efficace et construire des relations de confiance avec les partenaires est essentiel pour leur fidélisation.
+
+4.3. Développement Technique et Infrastructure :
+*   Complexité technique : Le développement d'une application mobile native (ou multiplateforme performante), d'une plateforme web robuste et l'intégration de nombreux services tiers (paiement, cartes, notifications) représentent un défi technique important.
+*   Scalabilité : L'infrastructure doit être capable de gérer une croissance potentielle du nombre d'utilisateurs et de partenaires sans compromettre les performances.
+*   Performance : Assurer des temps de chargement rapides et une navigation fluide sur toutes les plateformes est crucial pour l'expérience utilisateur.
+*   Maintenance et mises à jour : La maintenance continue de l'application et de la plateforme, ainsi que l'intégration de nouvelles fonctionnalités et les mises à jour des services tiers, nécessiteront des ressources importantes.
+*   Choix technologiques : Sélectionner les technologies les plus appropriées et s'assurer de la compétence de l'équipe de développement dans ces domaines est un défi initial crucial.
+
+4.4. Géolocalisation et Données de Localisation :
+*   Précision de la localisation : Assurer une géolocalisation précise dans une zone urbaine dense comme Casablanca peut être techniquement complexe.
+*   Gestion des données de localisation : Stocker et traiter les données de localisation des utilisateurs de manière sécurisée et respectueuse de la vie privée.
+
+4.5. Sécurité et Confidentialité des Données :
+*   Protection des informations personnelles : La gestion des données personnelles des utilisateurs et des informations financières (si les paiements sont intégrés) nécessite des mesures de sécurité robustes pour éviter les violations de données.
+*   Conformité réglementaire : Respecter les lois et réglementations locales et internationales en matière de protection des données.
+*   Sécurité des transactions de paiement : Assurer la sécurité des transactions financières effectuées via la plateforme.
+*   Prévention des fraudes : Mettre en place des mécanismes pour détecter et prévenir les activités frauduleuses (faux comptes, fausses réservations, etc.).
+
+4.6. Expérience Utilisateur (UX) et Interface Utilisateur (UI) :
+*   Conception intuitive et conviviale : Créer une interface utilisateur attrayante et une expérience utilisateur fluide sur toutes les plateformes pour différents types d'utilisateurs.
+*   Accessibilité : S'assurer que la plateforme est accessible aux personnes ayant des besoins spécifiques.
+*   Tests utilisateurs : Effectuer des tests réguliers avec des utilisateurs réels pour identifier les points faibles et améliorer l'ergonomie.
+
+4.7. Modèle Économique et Monétisation :
+*   Définir un modèle économique viable : Choisir une stratégie de monétisation appropriée (commissions sur les réservations, abonnements pour les partenaires, publicité ciblée, etc.) qui soit acceptée par les utilisateurs et les partenaires.
+*   Atteindre la rentabilité : S'assurer que les revenus générés par la plateforme sont suffisants pour couvrir les coûts de développement, de maintenance, de marketing et d'exploitation.
+
+5- Livrables :
+*   Un rapport au format PDF contenant des explications et justifications des choix techniques effectués. Ce rapport doit aussi contenir :
+    *   L'adresse pour accéder à l'application web et mobile (il est aussi possible de partager une URL d'une vidéo démonstrative montrant l'application s'exécuter).
+    *   Description détaillée des architectures techniques et applicatives de votre solution.
+    *   Description détaillée du plan de sécurité : les stratégies, les mesures et les protocoles de sécurité implémentées pour protéger les données et la plateforme.
+    *   Le lien du répertoire Github (public ou privé) contenant le code source de l'application
+*   Une démonstration du travail réalisé doit être présentée lors d'une soutenance.
