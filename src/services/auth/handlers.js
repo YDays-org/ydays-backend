@@ -1,11 +1,20 @@
 import prisma from "../../lib/prisma.js";
 import admin from "../../config/firebase.js";
+import { sendMail } from "../../lib/email.js";
 
 export const signUp = async (req, res) => {
   const { email, password, fullName, phoneNumber } = req.body;
   let userRecord = null; // Keep track of the created Firebase user
 
   try {
+    const existingUserInDb = await prisma.user.findUnique({
+      where: { email },
+    });
+
+    if (existingUserInDb) {
+      return res.status(409).json({ success: false, error: 'This email address is already in use.' });
+    }
+
     userRecord = await admin.auth().createUser({
       email,
       password,
@@ -22,8 +31,8 @@ export const signUp = async (req, res) => {
         fullName,
         role: "customer",
         phoneNumber,
-        email_verified: false, // Set initial state
-        phone_verified: false,
+        emailVerified: false, // Set initial state
+        phoneVerified: false,
       },
     });
 
@@ -46,18 +55,28 @@ export const signUp = async (req, res) => {
     });
 
   } catch (error) {
-    // ROLLBACK: If any step fails after Firebase user creation, delete the orphaned Firebase user.
     if (userRecord) {
-      await admin.auth().deleteUser(userRecord.uid);
-      console.log(`Orphaned Firebase user ${userRecord.uid} deleted due to registration error.`);
+      try {
+        await admin.auth().deleteUser(userRecord.uid);
+        console.log(`Successfully rolled back orphaned Firebase user ${userRecord.uid}.`);
+      } catch (rollbackError) {
+        console.error(
+          `CRITICAL ERROR: Failed to create Prisma user and ALSO failed to roll back Firebase user ${userRecord.uid}. MANUAL CLEANUP REQUIRED.`,
+          rollbackError
+        );
+      }
     }
 
+    // Handle known errors cleanly
     if (error.code === 'auth/email-already-exists') {
+      return res.status(409).json({ success: false, error: 'This email address is already in use by Firebase.' });
+    }
+    if (error.code === 'P2002') { // Prisma's unique constraint violation code
       return res.status(409).json({ success: false, error: 'This email address is already in use.' });
     }
 
-    console.error("User registration failed:", error);
-    res.status(500).json({ success: false, error: "An unexpected error occurred during registration.", details: error.message });
+    console.error("An unexpected error occurred during user registration:", error);
+    res.status(500).json({ success: false, error: "An unexpected error occurred during registration." });
   }
 };
 
@@ -67,76 +86,59 @@ export const getProfile = async (req, res) => {
   res.status(200).json({ success: true, user: req.user });
 };
 
-export const signIn = async (req, res) => {
-  const { email } = req.body;
-  try {
-    const user = await prisma.user.findUnique({
-      where: { email: email },
-      include: { partner: true },
-    });
-
-    if (!user) {
-      return res.status(404).json({ success: false, message: "User not found." });
-    }
-
-    res.status(200).json({
-      success: true,
-      message: "Login successful",
-    });
-  } catch (error) {
-    res.status(401).json({ success: false, message: "Invalid Firebase ID token.", error: error.message });
-  }
-};
-
 export const updateProfile = async (req, res) => {
-  const { fullName, phoneNumber, profilePictureUrl, companyName, companyAddress, websiteUrl, socialMediaLinks } = req.body;
+  const { id: userId, role } = req.user;
 
   try {
-    const userUpdateData = {
-      fullName,
-      phoneNumber,
-      profilePictureUrl,
+    const allowedUserUpdates = {
+      fullName: req.body.fullName,
+      profilePictureUrl: req.body.profilePictureUrl,
+      // OMIT email, phoneNumber, and role for customer.
     };
 
-    // Filter out undefined values
-    Object.keys(userUpdateData).forEach((key) => userUpdateData[key] === undefined && delete userUpdateData[key]);
+    // Filter out any undefined values so we don't overwrite existing fields with null
+    Object.keys(allowedUserUpdates).forEach(key => allowedUserUpdates[key] === undefined && delete allowedUserUpdates[key]);
 
-    // Start a transaction
     const finalUser = await prisma.$transaction(async (tx) => {
-      // Update the user
-      await tx.user.update({
-        where: { id: req.user.id },
-        data: userUpdateData,
-      });
+      if (Object.keys(allowedUserUpdates).length > 0) {
+        await tx.user.update({
+          where: { id: userId },
+          data: allowedUserUpdates,
+        });
+      }
 
-      // If the user is a partner, update partner-specific fields
-      if (req.user.role === "partner") {
-        const partnerUpdateData = {
-          companyName,
-          companyAddress,
-          websiteUrl,
-          socialMediaLinks,
+      // If the user has the 'partner' role, update their partner info
+      if (role === "partner") {
+        const allowedPartnerUpdates = {
+          companyName: req.body.companyName,
+          companyAddress: req.body.companyAddress,
+          websiteUrl: req.body.websiteUrl,
+          socialMediaLinks: req.body.socialMediaLinks,
         };
-        Object.keys(partnerUpdateData).forEach((key) => partnerUpdateData[key] === undefined && delete partnerUpdateData[key]);
+        Object.keys(allowedPartnerUpdates).forEach(key => allowedPartnerUpdates[key] === undefined && delete allowedPartnerUpdates[key]);
 
-        if (Object.keys(partnerUpdateData).length > 0) {
-          await tx.partner.update({
-            where: { userId: req.user.id },
-            data: partnerUpdateData,
+        if (Object.keys(allowedPartnerUpdates).length > 0) {
+          await tx.partner.upsert({
+            where: { userId: userId },
+            update: allowedPartnerUpdates,
+            create: {
+              userId: userId,
+              ...allowedPartnerUpdates,
+            },
           });
         }
       }
 
-      // Fetch the final, updated user with partner info
       return tx.user.findUnique({
-        where: { id: req.user.id },
+        where: { id: userId },
         include: { partner: true },
       });
     });
 
     res.status(200).json({ success: true, message: "Profile updated successfully.", user: finalUser });
   } catch (error) {
-    res.status(500).json({ success: false, message: "Failed to update profile.", error: error.message });
+    console.error("Profile update failed:", error);
+    res.status(500).json({ success: false, error: "Failed to update profile.", details: error.message });
   }
 };
 
@@ -194,10 +196,13 @@ export const deleteAccount = async (req, res) => {
       await tx.user.delete({ where: { id } });
     });
 
+    // This runs only if the database deletion was successful.
     await admin.auth().deleteUser(id);
-    res.status(200).json({ success: true, message: "Account deleted successfully." });
+
+    res.status(200).json({ success: true, message: "Account and all associated data deleted successfully." });
   } catch (error) {
-    console.error(`Failed to delete Firebase user ${id} after DB deletion. Requires manual cleanup.`, error);
-    res.status(500).json({ success: false, error: "Failed to delete account." });
+    console.error(`Error during account deletion for user ${id}:`, error);
+    console.error(`Please check if user ${id} was deleted from the database but not from Firebase.`);
+    res.status(500).json({ success: false, error: "Failed to completely delete account." });
   }
 };
