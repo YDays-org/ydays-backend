@@ -1,15 +1,17 @@
-import { Router } from "express";
+import express, { Router } from "express";
 import { validationMiddleware } from "../../common/middlewares/validation.js";
 import * as bookingHandlers from "./handlers.js";
 import * as bookingSchemas from "./validation.js";
 import { authMiddleware } from "../../common/middlewares/auth.js";
 
 const router = Router();
+export const webhookRouter = Router();
 
-router.post(
-  "/payment-webhook",
-  validationMiddleware(bookingSchemas.webhookSchema),
-  bookingHandlers.handlePaymentWebhook
+// Stripe webhook needs raw body
+webhookRouter.post(
+  "/stripe",
+  express.raw({ type: "application/json" }),
+  bookingHandlers.handleStripeWebhook
 );
 
 router.get(

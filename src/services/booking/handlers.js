@@ -1,3 +1,4 @@
+import stripe from "../../config/stripe.js";
 import prisma from "../../lib/prisma.js";
 import { startOfDay, endOfDay } from "date-fns";
 import { sendMail } from "../../lib/email.js";
@@ -49,7 +50,7 @@ export const createReservation = async (req, res) => {
   const { id: userId } = req.user;
 
   try {
-    const { booking } = await prisma.$transaction(async (tx) => {
+    const { booking, clientSecret } = await prisma.$transaction(async (tx) => {
       // Step 1: Fetch schedule and listing details, locking the row.
       const schedule = await tx.pricingSchedule.findUnique({
         where: { id: scheduleId },
@@ -59,7 +60,7 @@ export const createReservation = async (req, res) => {
               promotions: {
                 include: { promotion: true },
                 where: { promotion: { isActive: true, startDate: { lte: new Date() }, endDate: { gte: new Date() } } },
-                orderBy: { promotion: { value: 'desc' } } // A simple heuristic for "best" promotion
+                orderBy: { promotion: { value: 'desc' } }
               }
             }
           }
@@ -69,14 +70,13 @@ export const createReservation = async (req, res) => {
       if (!schedule) throw new Error("Pricing schedule not found.");
       if (!schedule.isAvailable) throw new Error("This time slot is no longer available.");
 
-      const { listing } = schedule; // Extract listing to avoid TS property warning
+      const { listing } = schedule;
 
       const availableSlots = schedule.capacity - schedule.bookedSlots;
       if (numParticipants > availableSlots) {
         throw new Error(`Not enough available slots. Only ${availableSlots} left.`);
       }
 
-      // Step 2: Calculate final price with active promotion
       const activePromotion = listing.promotions[0]?.promotion;
       let finalPricePerParticipant = schedule.price;
       if (activePromotion) {
@@ -88,27 +88,33 @@ export const createReservation = async (req, res) => {
       }
       const totalPrice = finalPricePerParticipant * numParticipants;
 
-      // Step 3: Update booked slots
       await tx.pricingSchedule.update({
         where: { id: scheduleId },
         data: { bookedSlots: { increment: numParticipants } },
       });
 
-      // Step 4: Create a PENDING booking
       const newBooking = await tx.booking.create({
         data: {
           userId,
-          listingId: schedule.listingId,
+          listingId: listing.id,
           scheduleId,
           numParticipants,
           totalPrice,
-          status: "pending", // STATUS IS NOW PENDING
+          status: "pending",
         },
       });
 
-      // Step 5: Create a PENDING payment record
-      // In a real app, this would use an ID from Stripe/PayPal
-      const gatewayTransactionId = `simulated_${newBooking.id}`;
+      let clientSecret = null;
+      let gatewayTransactionId;
+
+      const paymentIntent = await stripe.paymentIntents.create({
+        amount: Math.round(totalPrice * 100),
+        currency: schedule.currency.toLowerCase(),
+        metadata: { bookingId: newBooking.id, userId },
+      });
+      clientSecret = paymentIntent.client_secret;
+      gatewayTransactionId = paymentIntent.id;
+
       await tx.payment.create({
         data: {
           bookingId: newBooking.id,
@@ -116,18 +122,23 @@ export const createReservation = async (req, res) => {
           amount: totalPrice,
           currency: schedule.currency,
           status: 'pending',
-          paymentGateway: 'simulated',
+          paymentGateway: 'stripe',
           gatewayTransactionId,
         }
       });
 
-      return { booking: newBooking, listing, schedule };
+      return { booking: newBooking, clientSecret };
     });
 
     res.status(201).json({
       success: true,
-      message: "Reservation created and is pending payment. Complete payment to confirm.",
-      data: booking
+      message: "Reservation created and is pending payment.",
+      data: {
+        booking,
+        paymentInfo: {
+          clientSecret,
+        },
+      }
     });
   } catch (error) {
     res.status(400).json({ success: false, message: error.message });
@@ -324,92 +335,80 @@ export const updateReservation = async (req, res) => {
   }
 };
 
-export const handlePaymentWebhook = async (req, res) => {
-  const { gatewayTransactionId, status: paymentStatus } = req.body;
-
-  // In a real application, you would first verify the webhook signature
-  // to ensure it's a legitimate request from your payment provider.
-
-  if (paymentStatus !== 'succeeded') {
-    // Optionally handle failed payments here, e.g., by cancelling the booking
-    // and restoring the capacity. For now, we just acknowledge and return.
-    console.log(`Received non-successful payment status for ${gatewayTransactionId}. Status: ${paymentStatus}`);
-    return res.status(200).send();
-  }
-
-  try {
-    const { booking, user, listing, schedule } = await prisma.$transaction(async (tx) => {
-      // 1. Find the payment record.
-      const payment = await tx.payment.findUnique({
-        where: { gatewayTransactionId },
-        include: { booking: true }
-      });
-
-      if (!payment) throw new Error("Payment record not found.");
-      if (payment.booking.status !== 'pending') {
-        console.log(`Booking ${payment.bookingId} is already processed. Status: ${payment.booking.status}`);
-        return { booking: null }; // Gracefully exit if already handled.
-      }
-
-      // 2. Update payment and booking statuses.
-      await tx.payment.update({
-        where: { id: payment.id },
-        data: { status: 'succeeded' },
-      });
-
-      const updatedBooking = await tx.booking.update({
-        where: { id: payment.bookingId },
-        data: { status: 'confirmed' },
-        include: {
-          user: true,
-          listing: true,
-          schedule: true,
-        },
-      });
-
-      // 3. Create the persistent notification.
-      await tx.notification.create({
-        data: {
-          userId: updatedBooking.userId,
-          type: 'booking_confirmed',
-          title: `Booking Confirmed: ${updatedBooking.listing.title}`,
-          message: `Your booking for ${updatedBooking.listing.title} on ${new Date(updatedBooking.schedule.startTime).toLocaleString()} is confirmed.`,
-          relatedBookingId: updatedBooking.id,
-          relatedListingId: updatedBooking.listingId,
-        },
-      });
-
-      return {
-        booking: updatedBooking,
-        user: updatedBooking.user,
-        listing: updatedBooking.listing,
-        schedule: updatedBooking.schedule
-      };
+const _confirmBooking = async (gatewayTransactionId) => {
+  return await prisma.$transaction(async (tx) => {
+    const payment = await tx.payment.findFirst({
+      where: { gatewayTransactionId },
+      include: { booking: true }
     });
 
-    if (!booking) {
-      return res.status(200).json({ success: true, message: "Webhook for an already processed booking received." });
+    if (!payment) throw new Error("Payment record not found.");
+    if (payment.booking.status !== 'pending') {
+      console.log(`Booking ${payment.bookingId} is already processed.`);
+      return { booking: null };
     }
 
-    // --- Post-Transaction Side Effects (Moved from createReservation) ---
-    sendMail({
-      to: user.email,
-      subject: `Your Booking for ${listing.title} is Confirmed!`,
-      html: `<h1>Booking Confirmation</h1><p>Hi ${user.fullName},</p><p>Your booking for <strong>${listing.title}</strong> on ${new Date(schedule.startTime).toLocaleString()} is confirmed.</p>`,
-    }).catch(err => console.error("Failed to send booking confirmation email:", err));
+    await tx.payment.update({
+      where: { id: payment.id },
+      data: { status: 'succeeded' },
+    });
 
-    const receiverSocketId = userSocketMap[user.id];
-    if (receiverSocketId) {
-      io.to(receiverSocketId).emit("new_booking_notification", {
-        title: `Booking Confirmed: ${listing.title}`,
-        message: `Your booking for ${new Date(schedule.startTime).toLocaleString()} is confirmed.`,
-        bookingId: booking.id,
-      });
-    }
+    const updatedBooking = await tx.booking.update({
+      where: { id: payment.bookingId },
+      data: { status: 'confirmed' },
+      include: { user: true, listing: true, schedule: true },
+    });
 
-    res.status(200).json({ success: true, message: "Webhook processed successfully." });
+    await tx.notification.create({
+      data: {
+        userId: updatedBooking.userId,
+        type: 'booking_confirmed',
+        title: `Booking Confirmed: ${updatedBooking.listing.title}`,
+        message: `Your booking for ${updatedBooking.listing.title} on ${new Date(updatedBooking.schedule.startTime).toLocaleString()} is confirmed.`,
+        relatedBookingId: updatedBooking.id,
+        relatedListingId: updatedBooking.listingId,
+      },
+    });
+    return { booking: updatedBooking, user: updatedBooking.user, listing: updatedBooking.listing, schedule: updatedBooking.schedule };
+  });
+};
 
-  } catch (error) {
-    res.status(400).json({ success: false, message: error.message });
+export const handleStripeWebhook = async (req, res) => {
+  const sig = req.headers['stripe-signature'];
+  let event;
+
+  try {
+    event = stripe.webhooks.constructEvent(req.body, sig, process.env.STRIPE_WEBHOOK_SECRET);
+  } catch (err) {
+    return res.status(400).send(`Webhook Error: ${err.message}`);
   }
+
+  if (event.type === 'payment_intent.succeeded') {
+    const paymentIntent = event.data.object;
+    try {
+      const { booking, user, listing, schedule } = await _confirmBooking(paymentIntent.id);
+      if (booking) {
+        // Post-confirmation side effects
+        sendMail({
+          to: user.email,
+          subject: `Your Booking for ${listing.title} is Confirmed!`,
+          html: `<h1>Booking Confirmation</h1><p>Hi ${user.fullName},</p><p>Your booking for <strong>${listing.title}</strong> on ${new Date(schedule.startTime).toLocaleString()} is confirmed.</p>`,
+        }).catch(err => console.error("Failed to send booking confirmation email:", err));
+
+        const receiverSocketId = userSocketMap[user.id];
+        if (receiverSocketId) {
+          io.to(receiverSocketId).emit("new_booking_notification", {
+            title: `Booking Confirmed: ${listing.title}`,
+            message: `Your booking for ${new Date(schedule.startTime).toLocaleString()} is confirmed.`,
+            bookingId: booking.id,
+          });
+        }
+      }
+    } catch (error) {
+      console.error(`Failed to confirm booking for Stripe paymentIntent ${paymentIntent.id}:`, error);
+      return res.status(500).json({ error: "Failed to process webhook." });
+    }
+  }
+
+  res.status(200).json({ received: true });
 };

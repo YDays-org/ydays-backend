@@ -2,9 +2,11 @@ import express from "express";
 import helmet from "helmet";
 import cookieParser from "cookie-parser";
 import cors from "cors";
-import bookingRouter from "./routes.js";
+import bookingRouter, { webhookRouter } from "./routes.js";
 
 const bookingApp = express();
+
+bookingApp.use("/webhooks", webhookRouter);
 
 bookingApp.use(helmet());
 bookingApp.use(cookieParser());

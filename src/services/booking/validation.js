@@ -36,10 +36,3 @@ export const updateBookingSchema = {
     numParticipants: Joi.number().integer().min(1).required(),
   }),
 };
-
-export const webhookSchema = {
-  body: Joi.object({
-    gatewayTransactionId: Joi.string().required(),
-    status: Joi.string().valid('succeeded', 'failed').required(),
-  }),
-};

@@ -57,4 +57,33 @@ router.post(
   partnerHandlers.applyPromotionToListings
 );
 
+// --- Schedule Management ---
+router.get(
+  "/listings/:listingId/schedules",
+  roleCheck(["partner"]),
+  validationMiddleware(partnerSchemas.listingIdParamSchema),
+  partnerHandlers.getSchedulesForListing
+);
+
+router.post(
+  "/listings/:listingId/schedules",
+  roleCheck(["partner"]),
+  validationMiddleware(partnerSchemas.createScheduleSchema),
+  partnerHandlers.createSchedule
+);
+
+router.put(
+  "/schedules/:scheduleId",
+  roleCheck(["partner"]),
+  validationMiddleware(partnerSchemas.updateScheduleSchema),
+  partnerHandlers.updateSchedule
+);
+
+router.delete(
+  "/schedules/:scheduleId",
+  roleCheck(["partner"]),
+  validationMiddleware(partnerSchemas.scheduleIdParamSchema),
+  partnerHandlers.deleteSchedule
+);
+
 export default router; 
