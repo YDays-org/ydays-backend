@@ -27,3 +27,19 @@ export const bookingIdParamSchema = {
     id: Joi.string().uuid().required(),
   }),
 };
+
+export const updateBookingSchema = {
+  params: Joi.object({
+    id: Joi.string().uuid().required(),
+  }),
+  body: Joi.object({
+    numParticipants: Joi.number().integer().min(1).required(),
+  }),
+};
+
+export const webhookSchema = {
+  body: Joi.object({
+    gatewayTransactionId: Joi.string().required(),
+    status: Joi.string().valid('succeeded', 'failed').required(),
+  }),
+};

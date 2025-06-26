@@ -45,24 +45,39 @@ enum BookingStatus {
   completed
 }
 
+enum PromotionType {
+  PERCENTAGE_DISCOUNT
+  FIXED_AMOUNT_DISCOUNT
+  VISIBILITY_BOOST
+}
+
+enum PaymentStatus {
+  pending
+  succeeded
+  failed
+  refunded
+  partially_refunded
+}
+
 // MODELS
 model User {
-  id                  String       @id @map("firebase_uid")
-  email               String       @unique
-  emailVerified       Boolean      @default(false) @map("email_verified")
-  fullName            String?      @map("full_name")
-  role                UserRole
-  profilePictureUrl   String?      @map("profile_picture_url")
-  phoneNumber         String?      @map("phone_number")
-  phoneVerified       Boolean      @default(false) @map("phone_verified")
-  createdAt           DateTime     @default(now()) @map("created_at")
-  updatedAt           DateTime     @updatedAt @map("updated_at")
-  devices             UserDevice[]
-  partner             Partner?
-  bookings            Booking[]
-  reviews             Review[]
-  favorites           Favorite[]
-  notifications       Notification[]
+  id                String         @id @map("firebase_uid")
+  email             String         @unique
+  emailVerified     Boolean        @default(false) @map("email_verified")
+  fullName          String?        @map("full_name")
+  role              UserRole
+  profilePictureUrl String?        @map("profile_picture_url")
+  phoneNumber       String?        @map("phone_number")
+  phoneVerified     Boolean        @default(false) @map("phone_verified")
+  createdAt         DateTime       @default(now()) @map("created_at")
+  updatedAt         DateTime       @updatedAt @map("updated_at")
+  devices           UserDevice[]
+  partner           Partner?
+  bookings          Booking[]
+  reviews           Review[]
+  favorites         Favorite[]
+  notifications     Notification[]
+  payments          Payment[]
 
   @@map("users")
 }
@@ -80,16 +95,17 @@ model UserDevice {
 }
 
 model Partner {
-  id               String    @id @default(uuid())
-  user             User      @relation(fields: [userId], references: [id], onDelete: Cascade)
-  userId           String    @unique @map("user_id")
-  companyName      String    @map("company_name")
-  companyAddress   String?   @map("company_address")
-  websiteUrl       String?   @map("website_url")
-  socialMediaLinks Json?     @map("social_media_links")
-  createdAt        DateTime  @default(now()) @map("created_at")
-  updatedAt        DateTime  @updatedAt @map("updated_at")
+  id               String      @id @default(uuid())
+  user             User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId           String      @unique @map("user_id")
+  companyName      String      @map("company_name")
+  companyAddress   String?     @map("company_address")
+  websiteUrl       String?     @map("website_url")
+  socialMediaLinks Json?       @map("social_media_links")
+  createdAt        DateTime    @default(now()) @map("created_at")
+  updatedAt        DateTime    @updatedAt @map("updated_at")
   listings         Listing[]
+  promotions       Promotion[]
 
   @@map("partners")
 }
@@ -104,40 +120,41 @@ model Category {
 }
 
 model Listing {
-  id                 String            @id @default(uuid())
-  partner            Partner           @relation(fields: [partnerId], references: [id])
-  partnerId          String            @map("partner_id")
-  category           Category?         @relation(fields: [categoryId], references: [id])
-  categoryId         Int?              @map("category_id")
+  id                 String              @id @default(uuid())
+  partner            Partner             @relation(fields: [partnerId], references: [id])
+  partnerId          String              @map("partner_id")
+  category           Category?           @relation(fields: [categoryId], references: [id])
+  categoryId         Int?                @map("category_id")
   type               ListingType
   title              String
   description        String?
   address            String
   location           Unsupported("geography(Point, 4326)")
-  openingHours       Json?             @map("opening_hours")
-  cancellationPolicy String?           @map("cancellation_policy")
-  accessibilityInfo  String?           @map("accessibility_info")
-  status             ListingStatus     @default(draft)
-  isPromoted         Boolean           @default(false) @map("is_promoted")
-  averageRating      Decimal?          @default(0) @db.Decimal(3, 2) @map("average_rating")
-  reviewCount        Int?              @default(0) @map("review_count")
-  createdAt          DateTime          @default(now()) @map("created_at")
-  updatedAt          DateTime          @updatedAt @map("updated_at")
+  openingHours       Json?               @map("opening_hours")
+  cancellationPolicy String?             @map("cancellation_policy")
+  accessibilityInfo  String?             @map("accessibility_info")
+  status             ListingStatus       @default(draft)
+  averageRating      Decimal?            @default(0) @db.Decimal(3, 2) @map("average_rating")
+  reviewCount        Int?                @default(0) @map("review_count")
+  createdAt          DateTime            @default(now()) @map("created_at")
+  updatedAt          DateTime            @updatedAt @map("updated_at")
   amenities          ListingAmenity[]
   media              ListingMedia[]
   schedules          PricingSchedule[]
   bookings           Booking[]
   reviews            Review[]
   favorites          Favorite[]
-  notifications      Notification[]
+  notifications      Notification[]      @relation("relatedListing")
+  promotions         ListingPromotion[]
+  dailyStats         ListingDailyStats[]
 
   @@map("listings")
 }
 
 model Amenity {
-  id      Int              @id @default(autoincrement())
-  name    String           @unique
-  iconUrl String?          @map("icon_url")
+  id       Int              @id @default(autoincrement())
+  name     String           @unique
+  iconUrl  String?          @map("icon_url")
   listings ListingAmenity[]
 
   @@map("amenities")
@@ -166,17 +183,17 @@ model ListingMedia {
 }
 
 model PricingSchedule {
-  id           String    @id @default(uuid())
-  listing      Listing   @relation(fields: [listingId], references: [id], onDelete: Cascade)
-  listingId    String    @map("listing_id")
-  startTime    DateTime  @map("start_time")
-  endTime      DateTime  @map("end_time")
-  price        Decimal   @db.Decimal(10, 2)
-  currency     String    @default("MAD")
-  capacity     Int?
-  bookedSlots  Int       @default(0) @map("booked_slots")
-  isAvailable  Boolean   @default(true) @map("is_available")
-  bookings     Booking[]
+  id          String    @id @default(uuid())
+  listing     Listing   @relation(fields: [listingId], references: [id], onDelete: Cascade)
+  listingId   String    @map("listing_id")
+  startTime   DateTime  @map("start_time")
+  endTime     DateTime  @map("end_time")
+  price       Decimal   @db.Decimal(10, 2)
+  currency    String    @default("MAD")
+  capacity    Int?
+  bookedSlots Int       @default(0) @map("booked_slots")
+  isAvailable Boolean   @default(true) @map("is_available")
+  bookings    Booking[]
 
   @@unique([listingId, startTime])
   @@map("pricing_schedules")
@@ -193,28 +210,28 @@ model Booking {
   numParticipants Int            @map("num_participants")
   totalPrice      Decimal        @db.Decimal(10, 2) @map("total_price")
   status          BookingStatus  @default(pending)
-  paymentIntentId String?        @unique @map("payment_intent_id")
   createdAt       DateTime       @default(now()) @map("created_at")
   updatedAt       DateTime       @updatedAt @map("updated_at")
   review          Review?
-  notifications   Notification[]
+  notifications   Notification[] @relation("relatedBooking")
+  payment         Payment?
 
   @@map("bookings")
 }
 
 model Review {
-  id            String   @id @default(uuid())
-  user          User     @relation(fields: [userId], references: [id])
-  userId        String   @map("user_id")
-  listing       Listing  @relation(fields: [listingId], references: [id], onDelete: Cascade)
-  listingId     String   @map("listing_id")
-  booking       Booking  @relation(fields: [bookingId], references: [id])
-  bookingId     String   @unique @map("booking_id")
-  rating        Int
-  comment       String?
-  partnerReply  String?  @map("partner_reply")
-  createdAt     DateTime @default(now()) @map("created_at")
-  updatedAt     DateTime @updatedAt @map("updated_at")
+  id           String   @id @default(uuid())
+  user         User     @relation(fields: [userId], references: [id])
+  userId       String   @map("user_id")
+  listing      Listing  @relation(fields: [listingId], references: [id], onDelete: Cascade)
+  listingId    String   @map("listing_id")
+  booking      Booking  @relation(fields: [bookingId], references: [id])
+  bookingId    String   @unique @map("booking_id")
+  rating       Int
+  comment      String?
+  partnerReply String?  @map("partner_reply")
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
 
   @@map("reviews")
 }
@@ -231,18 +248,77 @@ model Favorite {
 }
 
 model Notification {
-  id                 String   @id @default(uuid())
-  user               User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  userId             String   @map("user_id")
-  type               String
-  title              String
-  message            String
-  isRead             Boolean  @default(false) @map("is_read")
-  relatedListing     Listing? @relation(fields: [relatedListingId], references: [id])
-  relatedListingId   String?  @map("related_listing_id")
-  relatedBooking     Booking? @relation(fields: [relatedBookingId], references: [id])
-  relatedBookingId   String?  @map("related_booking_id")
-  createdAt          DateTime @default(now()) @map("created_at")
+  id               String   @id @default(uuid())
+  user             User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId           String   @map("user_id")
+  type             String
+  title            String
+  message          String
+  isRead           Boolean  @default(false) @map("is_read")
+  relatedListing   Listing? @relation("relatedListing", fields: [relatedListingId], references: [id])
+  relatedListingId String?  @map("related_listing_id")
+  relatedBooking   Booking? @relation("relatedBooking", fields: [relatedBookingId], references: [id])
+  relatedBookingId String?  @map("related_booking_id")
+  createdAt        DateTime @default(now()) @map("created_at")
 
   @@map("notifications")
+}
+
+model Promotion {
+  id          String             @id @default(uuid())
+  partner     Partner            @relation(fields: [partnerId], references: [id], onDelete: Cascade)
+  partnerId   String             @map("partner_id")
+  name        String
+  description String?
+  type        PromotionType
+  value       Decimal            @db.Decimal(10, 2)
+  startDate   DateTime           @map("start_date")
+  endDate     DateTime           @map("end_date")
+  isActive    Boolean            @default(true) @map("is_active")
+  createdAt   DateTime           @default(now()) @map("created_at")
+  updatedAt   DateTime           @updatedAt @map("updated_at")
+  listings    ListingPromotion[]
+
+  @@map("promotions")
+}
+
+model ListingPromotion {
+  listing     Listing   @relation(fields: [listingId], references: [id], onDelete: Cascade)
+  listingId   String    @map("listing_id")
+  promotion   Promotion @relation(fields: [promotionId], references: [id], onDelete: Cascade)
+  promotionId String    @map("promotion_id")
+
+  @@id([listingId, promotionId])
+  @@map("listing_promotions")
+}
+
+model ListingDailyStats {
+  id           BigInt   @id @default(autoincrement())
+  listing      Listing  @relation(fields: [listingId], references: [id], onDelete: Cascade)
+  listingId    String   @map("listing_id")
+  statDate     DateTime @db.Date @map("stat_date")
+  viewCount    Int      @default(0) @map("view_count")
+  bookingCount Int      @default(0) @map("booking_count")
+
+  @@unique([listingId, statDate])
+  @@map("listing_daily_stats")
+}
+
+model Payment {
+  id                   String        @id @default(uuid())
+  booking              Booking       @relation(fields: [bookingId], references: [id])
+  bookingId            String        @unique @map("booking_id")
+  user                 User          @relation(fields: [userId], references: [id])
+  userId               String        @map("user_id")
+  amount               Decimal       @db.Decimal(10, 2)
+  currency             String
+  status               PaymentStatus @default(pending)
+  paymentGateway       String        @map("payment_gateway")
+  gatewayTransactionId String        @unique @map("gateway_transaction_id")
+  paymentMethodDetails Json?         @map("payment_method_details")
+  errorMessage         String?       @map("error_message")
+  createdAt            DateTime      @default(now()) @map("created_at")
+  updatedAt            DateTime      @updatedAt @map("updated_at")
+
+  @@map("payments")
 }

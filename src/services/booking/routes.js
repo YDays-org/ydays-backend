@@ -2,14 +2,24 @@ import { Router } from "express";
 import { validationMiddleware } from "../../common/middlewares/validation.js";
 import * as bookingHandlers from "./handlers.js";
 import * as bookingSchemas from "./validation.js";
+import { authMiddleware } from "../../common/middlewares/auth.js";
 
 const router = Router();
+
+router.post(
+  "/payment-webhook",
+  validationMiddleware(bookingSchemas.webhookSchema),
+  bookingHandlers.handlePaymentWebhook
+);
 
 router.get(
   "/availability",
   validationMiddleware(bookingSchemas.getAvailabilitySchema),
   bookingHandlers.getAvailability
 );
+
+// All subsequent routes require authentication
+router.use(authMiddleware);
 
 router.post(
   "/reservations",
@@ -27,6 +37,12 @@ router.get(
   "/reservations/:id",
   validationMiddleware(bookingSchemas.bookingIdParamSchema),
   bookingHandlers.getReservationById
+);
+
+router.patch(
+  "/reservations/:id",
+  validationMiddleware(bookingSchemas.updateBookingSchema),
+  bookingHandlers.updateReservation
 );
 
 router.patch(

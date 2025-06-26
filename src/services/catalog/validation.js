@@ -9,8 +9,21 @@ export const getListingsSchema = {
     category: Joi.string().trim(),
     lat: Joi.string().regex(LATITUDE_REGEX),
     lon: Joi.string().regex(LONGITUDE_REGEX),
+    radius: Joi.number().integer().min(100).max(50000),
+    priceMin: Joi.number().min(0),
+    priceMax: Joi.number().min(Joi.ref('priceMin')),
+    dateStart: Joi.date().iso(),
+    dateEnd: Joi.date().iso().min(Joi.ref('dateStart')),
+    amenities: Joi.string().trim(),
     page: Joi.number().integer().min(1).default(1),
     limit: Joi.number().integer().min(1).max(100).default(10),
+  }).with('lat', 'lon').with('lon', 'lat'),
+};
+
+export const getFeedSchema = {
+  query: Joi.object({
+    page: Joi.number().integer().min(1).default(1),
+    limit: Joi.number().integer().min(1).max(100).default(20),
   }),
 };
 
@@ -50,7 +63,6 @@ export const updateListingSchema = {
     cancellationPolicy: Joi.string(),
     accessibilityInfo: Joi.string(),
     status: Joi.string().valid("published", "draft", "archived"),
-    isPromoted: Joi.boolean(),
     amenityIds: Joi.array().items(Joi.number().integer()),
   }).min(1),
 };

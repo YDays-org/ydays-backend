@@ -25,6 +25,8 @@
     "prisma": "^6.10.1"
   },
   "dependencies": {
+    "@arcjet/inspect": "^1.0.0-beta.8",
+    "@arcjet/node": "^1.0.0-beta.8",
     "@prisma/client": "^6.10.1",
     "@prisma/extension-accelerate": "^2.0.1",
     "cloudinary": "^2.7.0",

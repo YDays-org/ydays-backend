@@ -1,13 +1,12 @@
 -- YDAYS 2025 - Casablanca Discovery Platform
--- FINAL & ENHANCED Database Schema
+-- FINAL CONSOLIDATED & PROFESSIONAL Database Schema
 --
--- Version: 1.1
+-- Version: 2.0
 -- Changelog:
--- - Added Full-Text Search indexes for listings.
--- - Added performance indexes for filtering.
--- - Added `notifications` table for in-app history.
--- - Added `is_promoted` flag to listings.
--- - Added `user_devices` table for push notifications.
+-- - INTEGRATED: A robust Promotions Engine to replace the 'is_promoted' flag.
+-- - INTEGRATED: A dedicated Payments table, removing payment details from the bookings table.
+-- - INTEGRATED: A daily statistics table for partner analytics and reporting.
+-- - All changes from v1.1 are included.
 
 -- PRELIMINARIES --
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
@@ -19,6 +18,26 @@ DO $$ BEGIN CREATE TYPE listing_type AS ENUM ('activity', 'event', 'restaurant')
 DO $$ BEGIN CREATE TYPE listing_status AS ENUM ('published', 'draft', 'archived'); EXCEPTION WHEN duplicate_object THEN null; END $$;
 DO $$ BEGIN CREATE TYPE media_type AS ENUM ('image', 'video'); EXCEPTION WHEN duplicate_object THEN null; END $$;
 DO $$ BEGIN CREATE TYPE booking_status AS ENUM ('pending', 'confirmed', 'cancelled', 'completed'); EXCEPTION WHEN duplicate_object THEN null; END $$;
+
+-- ★ NEW ★ ENUMs for new features
+DO $$ BEGIN 
+    CREATE TYPE promotion_type AS ENUM (
+        'PERCENTAGE_DISCOUNT', 
+        'FIXED_AMOUNT_DISCOUNT',
+        'VISIBILITY_BOOST'
+    ); 
+EXCEPTION WHEN duplicate_object THEN null; END $$;
+
+DO $$ BEGIN
+    CREATE TYPE payment_status AS ENUM (
+        'pending', 
+        'succeeded', 
+        'failed', 
+        'refunded',
+        'partially_refunded'
+    );
+EXCEPTION WHEN duplicate_object THEN null; END $$;
+
 
 -- TABLE DEFINITIONS --
 
@@ -75,7 +94,7 @@ CREATE TABLE IF NOT EXISTS listings (
     cancellation_policy TEXT,
     accessibility_info TEXT,
     status listing_status NOT NULL DEFAULT 'draft',
-    is_promoted BOOLEAN NOT NULL DEFAULT FALSE,
+    -- NOTICE: 'is_promoted' column has been REMOVED and is replaced by the promotions engine.
     average_rating NUMERIC(3, 2) DEFAULT 0,
     review_count INT DEFAULT 0,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
@@ -124,7 +143,7 @@ CREATE TABLE IF NOT EXISTS bookings (
     num_participants INT NOT NULL,
     total_price NUMERIC(10, 2) NOT NULL,
     status booking_status NOT NULL DEFAULT 'pending',
-    payment_intent_id VARCHAR(255) UNIQUE,
+    -- NOTICE: 'payment_intent_id' column has been REMOVED and is replaced by the payments table.
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
@@ -148,11 +167,10 @@ CREATE TABLE IF NOT EXISTS favorites (
     PRIMARY KEY (user_id, listing_id)
 );
 
--- ★ NEW ★ Notification history table
 CREATE TABLE IF NOT EXISTS notifications (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-    type VARCHAR(50) NOT NULL, -- e.g., 'booking_reminder', 'new_offer', 'nearby_event'
+    type VARCHAR(50) NOT NULL,
     title VARCHAR(255) NOT NULL,
     message TEXT NOT NULL,
     is_read BOOLEAN DEFAULT FALSE,
@@ -161,17 +179,66 @@ CREATE TABLE IF NOT EXISTS notifications (
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
+-- ★★★ NEW & IMPROVED TABLES ★★★
+
+-- 1. Promotions Engine
+CREATE TABLE IF NOT EXISTS promotions (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    partner_id UUID NOT NULL REFERENCES partners(id) ON DELETE CASCADE,
+    name VARCHAR(255) NOT NULL,
+    description TEXT,
+    type promotion_type NOT NULL,
+    value NUMERIC(10, 2) NOT NULL,
+    start_date TIMESTAMPTZ NOT NULL,
+    end_date TIMESTAMPTZ NOT NULL,
+    is_active BOOLEAN NOT NULL DEFAULT TRUE,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS listing_promotions (
+    listing_id UUID NOT NULL REFERENCES listings(id) ON DELETE CASCADE,
+    promotion_id UUID NOT NULL REFERENCES promotions(id) ON DELETE CASCADE,
+    PRIMARY KEY (listing_id, promotion_id)
+);
+
+-- 2. Partner Analytics Table
+CREATE TABLE IF NOT EXISTS listing_daily_stats (
+    id BIGSERIAL PRIMARY KEY,
+    listing_id UUID NOT NULL REFERENCES listings(id) ON DELETE CASCADE,
+    stat_date DATE NOT NULL,
+    view_count INT NOT NULL DEFAULT 0,
+    booking_count INT NOT NULL DEFAULT 0,
+    UNIQUE (listing_id, stat_date)
+);
+
+-- 3. Dedicated Payments Table
+CREATE TABLE IF NOT EXISTS payments (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    booking_id UUID NOT NULL REFERENCES bookings(id),
+    user_id UUID NOT NULL REFERENCES users(id),
+    amount NUMERIC(10, 2) NOT NULL,
+    currency VARCHAR(3) NOT NULL,
+    status payment_status NOT NULL DEFAULT 'pending',
+    payment_gateway VARCHAR(50) NOT NULL,
+    gateway_transaction_id VARCHAR(255) UNIQUE NOT NULL,
+    payment_method_details JSONB,
+    error_message TEXT,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
 
 -- INDEXES FOR PERFORMANCE --
 
 -- Critical spatial index for geolocation
 CREATE INDEX IF NOT EXISTS listings_location_idx ON listings USING GIST (location);
 
--- ★ NEW ★ Full-text search indexes
+-- Full-text search indexes
 CREATE INDEX IF NOT EXISTS listings_title_search_idx ON listings USING GIN (to_tsvector('french', title));
 CREATE INDEX IF NOT EXISTS listings_description_search_idx ON listings USING GIN (to_tsvector('french', description));
 
--- ★ NEW ★ Indexes for common filtering operations
+-- Indexes for common filtering operations
 CREATE INDEX IF NOT EXISTS listings_type_status_idx ON listings(type, status);
 CREATE INDEX IF NOT EXISTS pricing_schedules_price_idx ON pricing_schedules(price);
 
@@ -182,6 +249,11 @@ CREATE INDEX IF NOT EXISTS reviews_listing_id_idx ON reviews(listing_id);
 CREATE INDEX IF NOT EXISTS pricing_schedules_listing_id_idx ON pricing_schedules(listing_id);
 CREATE INDEX IF NOT EXISTS pricing_schedules_start_time_idx ON pricing_schedules(start_time);
 CREATE INDEX IF NOT EXISTS notifications_user_id_idx ON notifications(user_id);
+
+-- ★ NEW ★ Indexes for Added Tables
+CREATE INDEX IF NOT EXISTS idx_promotions_partner_id ON promotions(partner_id);
+CREATE INDEX IF NOT EXISTS idx_listing_daily_stats_date ON listing_daily_stats(stat_date);
+CREATE INDEX IF NOT EXISTS idx_payments_booking_id ON payments(booking_id);
 
 
 -- INITIAL DATA --

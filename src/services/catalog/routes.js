@@ -3,6 +3,7 @@ import { validationMiddleware } from "../../common/middlewares/validation.js";
 import { roleCheck } from "../../common/middlewares/roles.js";
 import * as catalogHandlers from "./handlers.js";
 import * as catalogSchemas from "./validation.js";
+import { authMiddleware } from "../../common/middlewares/auth.js";
 
 const router = Router();
 
@@ -22,6 +23,27 @@ router.get(
 router.get("/categories", catalogHandlers.getCategories);
 
 router.get("/amenities", catalogHandlers.getAmenities);
+
+// --- User-Protected Routes ---
+router.use(authMiddleware);
+
+router.get(
+  "/feed",
+  validationMiddleware(catalogSchemas.getFeedSchema),
+  catalogHandlers.getPersonalizedFeed
+);
+
+router.post(
+  "/favorites/:listingId",
+  validationMiddleware(catalogSchemas.favoriteParamSchema),
+  catalogHandlers.addFavorite
+);
+
+router.delete(
+  "/favorites/:listingId",
+  validationMiddleware(catalogSchemas.favoriteParamSchema),
+  catalogHandlers.removeFavorite
+);
 
 // --- Partner-Protected Routes ---
 router.post(
@@ -43,19 +65,6 @@ router.delete(
   roleCheck(["partner"]),
   validationMiddleware(catalogSchemas.listingIdParamSchema),
   catalogHandlers.deleteListing
-);
-
-// --- User-Protected Routes ---
-router.post(
-  "/favorites/:listingId",
-  validationMiddleware(catalogSchemas.favoriteParamSchema),
-  catalogHandlers.addFavorite
-);
-
-router.delete(
-  "/favorites/:listingId",
-  validationMiddleware(catalogSchemas.favoriteParamSchema),
-  catalogHandlers.removeFavorite
 );
 
 export default router;
