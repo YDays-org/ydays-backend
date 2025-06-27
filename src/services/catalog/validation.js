@@ -31,7 +31,7 @@ export const createListingSchema = {
   body: Joi.object({
     title: Joi.string().required(),
     description: Joi.string().required(),
-    type: Joi.string().valid("activity", "event", "restaurant").required(),
+    type: Joi.string().valid("ACTIVITY", "EVENT", "RESTAURANT").required(),
     address: Joi.string().required(),
     location: Joi.object({
       lat: Joi.number().required(),
@@ -52,7 +52,7 @@ export const updateListingSchema = {
   body: Joi.object({
     title: Joi.string(),
     description: Joi.string(),
-    type: Joi.string().valid("activity", "event", "restaurant"),
+    type: Joi.string().valid("ACTIVITY", "EVENT", "RESTAURANT"),
     address: Joi.string(),
     location: Joi.object({
       lat: Joi.number().required(),
@@ -62,7 +62,7 @@ export const updateListingSchema = {
     openingHours: Joi.object(),
     cancellationPolicy: Joi.string(),
     accessibilityInfo: Joi.string(),
-    status: Joi.string().valid("published", "draft", "archived"),
+    status: Joi.string().valid("PUBLISHED", "DRAFT", "ARCHIVED"),
     amenityIds: Joi.array().items(Joi.number().integer()),
   }).min(1),
 };

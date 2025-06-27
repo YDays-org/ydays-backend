@@ -23,7 +23,7 @@ router.post(
 
 router.put(
   "/:id/reply",
-  roleCheck(["partner"]),
+  roleCheck(["PARTNER"]),
   validationMiddleware(reviewSchemas.addReplySchema),
   reviewHandlers.addPartnerReply
 );

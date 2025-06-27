@@ -208,38 +208,56 @@ export const getPartnerDashboardStats = async (req, res) => {
   const hasDateFilter = startDate || endDate;
 
   try {
-    const totalRevenue = await prisma.booking.aggregate({
-      _sum: { totalPrice: true },
-      where: {
-        listing: { partnerId },
-        status: 'completed',
-        ...(hasDateFilter && { createdAt: dateFilter }),
-      },
-    });
+    const [totalRevenueResult, bookingsByStatus, totalListings, totalReviews, reviewsAwaitingReply] = await Promise.all([
+      prisma.booking.aggregate({
+        _sum: { totalPrice: true },
+        where: {
+          listing: { partnerId },
+          status: 'COMPLETED',
+          ...(hasDateFilter && { createdAt: dateFilter }),
+        },
+      }),
+      prisma.booking.groupBy({
+        by: ['status'],
+        _count: { id: true },
+        where: {
+          listing: { partnerId },
+          ...(hasDateFilter && { createdAt: dateFilter }),
+        },
+      }),
+      prisma.listing.count({
+        where: { partnerId },
+      }),
+      prisma.review.count({
+        where: {
+          listing: { partnerId },
+          ...(hasDateFilter && { createdAt: dateFilter }),
+        },
+      }),
+      prisma.review.count({
+        where: {
+          listing: { partnerId },
+          partnerReply: null,
+          ...(hasDateFilter && { createdAt: dateFilter }),
+        },
+      }),
+    ]);
 
-    const bookingsByStatus = await prisma.booking.groupBy({
-      by: ['status'],
-      _count: { id: true },
-      where: {
-        listing: { partnerId },
-        ...(hasDateFilter && { createdAt: dateFilter }),
-      },
-    });
-
-    const totalListings = await prisma.listing.count({
-      where: { partnerId },
-    });
 
     // Format stats for a clean response
     const stats = {
-      totalRevenue: totalRevenue._sum.totalPrice || 0,
+      totalRevenue: totalRevenueResult._sum.totalPrice || 0,
       totalListings,
       bookings: {
         total: bookingsByStatus.reduce((acc, curr) => acc + curr._count.id, 0),
-        confirmed: bookingsByStatus.find(b => b.status === 'confirmed')?._count.id || 0,
-        completed: bookingsByStatus.find(b => b.status === 'completed')?._count.id || 0,
-        cancelled: bookingsByStatus.find(b => b.status === 'cancelled')?._count.id || 0,
+        confirmed: bookingsByStatus.find(b => b.status === 'CONFIRMED')?._count.id || 0,
+        completed: bookingsByStatus.find(b => b.status === 'COMPLETED')?._count.id || 0,
+        cancelled: bookingsByStatus.find(b => b.status === 'CANCELLED')?._count.id || 0,
       },
+      reviews: {
+        total: totalReviews,
+        awaitingReply: reviewsAwaitingReply
+      }
     };
 
     res.status(200).json({ success: true, data: stats });
@@ -264,7 +282,7 @@ export const cancelReservationByPartner = async (req, res) => {
       if (booking.listing.partnerId !== partnerId) {
         throw new Error("You do not have permission to cancel this booking.");
       }
-      if (booking.status === "cancelled" || booking.status === "completed") {
+      if (booking.status === "CANCELLED" || booking.status === "COMPLETED") {
         throw new Error(`Booking cannot be cancelled as it is already ${booking.status}.`);
       }
 
@@ -275,7 +293,7 @@ export const cancelReservationByPartner = async (req, res) => {
 
       await tx.booking.update({
         where: { id: bookingId },
-        data: { status: "cancelled" },
+        data: { status: "CANCELLED" },
       });
 
       await tx.notification.create({
@@ -308,6 +326,85 @@ export const cancelReservationByPartner = async (req, res) => {
     }
 
     res.status(200).json({ success: true, message: "Booking cancelled successfully." });
+  } catch (error) {
+    res.status(400).json({ success: false, message: error.message });
+  }
+};
+
+export const approveReservationByPartner = async (req, res) => {
+  const { id: bookingId } = req.params;
+  const partnerId = req.user.partner?.id;
+
+  try {
+    const { booking, user } = await prisma.$transaction(async (tx) => {
+      const bookingToApprove = await tx.booking.findUnique({
+        where: { id: bookingId },
+        include: {
+          listing: true,
+          user: true,
+        },
+      });
+
+      if (!bookingToApprove) throw new Error("Booking not found.");
+      if (bookingToApprove.listing.partnerId !== partnerId) {
+        throw new Error("You do not have permission to approve this booking.");
+      }
+      if (bookingToApprove.status !== 'PENDING') {
+        throw new Error(`Only pending bookings can be approved. This booking is currently '${bookingToApprove.status}'.`);
+      }
+
+      const updatedBooking = await tx.booking.update({
+        where: { id: bookingId },
+        data: { status: "AWAITING_PAYMENT" },
+      });
+
+      await tx.payment.create({
+        data: {
+          bookingId: updatedBooking.id,
+          userId: bookingToApprove.userId,
+          amount: updatedBooking.totalPrice,
+          currency: "MAD", // Assuming MAD, adjust if dynamic
+          status: 'PENDING',
+          paymentGateway: 'system', // Indicates internal system payment
+          gatewayTransactionId: `mock_${updatedBooking.id}_${Date.now()}` // Mock ID
+        }
+      });
+
+      await tx.notification.create({
+        data: {
+          userId: bookingToApprove.userId,
+          type: 'BOOKING_APPROVED_FOR_PAYMENT',
+          title: `Action Required: Your booking for ${bookingToApprove.listing.title} is approved!`,
+          message: `Your booking is approved and is now awaiting payment. Please complete the payment to confirm your spot.`,
+          relatedBookingId: updatedBooking.id,
+          relatedListingId: bookingToApprove.listingId,
+        },
+      });
+
+      return { booking: updatedBooking, user: bookingToApprove.user };
+    });
+
+    const paymentLink = `${process.env.FRONTEND_URL}/payment?booking_id=${booking.id}`;
+
+    sendMail({
+      to: user.email,
+      subject: `Your Booking for ${booking.listing.title} is Approved!`,
+      html: `<h1>Booking Approved & Awaiting Payment</h1><p>Hi ${user.fullName},</p><p>Great news! Your booking for <strong>${booking.listing.title}</strong> has been approved by the host.</p><p>To confirm your reservation, please complete the payment by clicking the link below:</p><a href="${paymentLink}" target="_blank">Pay Now</a>`,
+    }).catch(err => console.error("Failed to send approval email:", err));
+
+    const receiverSocketId = userSocketMap[user.id];
+    if (receiverSocketId) {
+      io.to(receiverSocketId).emit("booking_approved_notification", {
+        type: 'BOOKING_APPROVED_FOR_PAYMENT',
+        title: `Your booking for ${booking.listing.title} is approved!`,
+        message: 'Please complete the payment to confirm your spot.',
+        bookingId: booking.id,
+        paymentLink: paymentLink
+      });
+    }
+
+    res.status(200).json({ success: true, message: "Booking approved and user has been notified to complete payment." });
+
   } catch (error) {
     res.status(400).json({ success: false, message: error.message });
   }
@@ -398,5 +495,39 @@ export const applyPromotionToListings = async (req, res) => {
 
   } catch (error) {
     res.status(400).json({ success: false, message: error.message });
+  }
+};
+
+export const getListingPerformanceStats = async (req, res) => {
+  const { listingId } = req.params;
+  const { startDate, endDate } = req.query;
+  const partnerId = req.user.partner?.id;
+
+  try {
+    const listing = await prisma.listing.findFirst({
+      where: { id: listingId, partnerId },
+      select: { id: true }
+    });
+
+    if (!listing) {
+      return res.status(403).json({ success: false, message: "Listing not found or you do not have permission to view its stats." });
+    }
+
+    const stats = await prisma.listingDailyStats.findMany({
+      where: {
+        listingId,
+        statDate: {
+          ...(startDate && { gte: new Date(startDate) }),
+          ...(endDate && { lte: new Date(endDate) }),
+        }
+      },
+      orderBy: {
+        statDate: 'asc'
+      }
+    });
+
+    res.status(200).json({ success: true, data: stats });
+  } catch (error) {
+    res.status(500).json({ success: false, message: "Failed to fetch listing performance stats.", error: error.message });
   }
 }; 

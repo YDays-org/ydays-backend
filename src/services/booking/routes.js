@@ -1,18 +1,10 @@
-import express, { Router } from "express";
+import { Router } from "express";
 import { validationMiddleware } from "../../common/middlewares/validation.js";
 import * as bookingHandlers from "./handlers.js";
 import * as bookingSchemas from "./validation.js";
 import { authMiddleware } from "../../common/middlewares/auth.js";
 
 const router = Router();
-export const webhookRouter = Router();
-
-// Stripe webhook needs raw body
-webhookRouter.post(
-  "/stripe",
-  express.raw({ type: "application/json" }),
-  bookingHandlers.handleStripeWebhook
-);
 
 router.get(
   "/availability",
@@ -51,6 +43,12 @@ router.patch(
   "/reservations/:id/cancel",
   validationMiddleware(bookingSchemas.bookingIdParamSchema),
   bookingHandlers.cancelReservation
+);
+
+router.post(
+  "/reservations/:id/pay",
+  validationMiddleware(bookingSchemas.paymentSchema),
+  bookingHandlers.submitPaymentForBooking
 );
 
 export default router;
