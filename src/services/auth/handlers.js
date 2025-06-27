@@ -22,14 +22,14 @@ export const signUp = async (req, res) => {
       phoneNumber,
     });
 
-    await admin.auth().setCustomUserClaims(userRecord.uid, { role: "customer" });
+    await admin.auth().setCustomUserClaims(userRecord.uid, { role: "CUSTOMER" });
 
     const newUser = await prisma.user.create({
       data: {
         id: userRecord.uid,
         email,
         fullName,
-        role: "customer",
+        role: "CUSTOMER",
         phoneNumber,
         emailVerified: false, // Set initial state
         phoneVerified: false,
@@ -108,7 +108,7 @@ export const updateProfile = async (req, res) => {
       }
 
       // If the user has the 'partner' role, update their partner info
-      if (role === "partner") {
+      if (role === "PARTNER") {
         const allowedPartnerUpdates = {
           companyName: req.body.companyName,
           companyAddress: req.body.companyAddress,
@@ -178,7 +178,7 @@ export const requestPasswordReset = async (req, res) => {
 };
 
 export const changePassword = async (req, res) => {
-  const { id } = req.user; 
+  const { id } = req.user;
   const { newPassword } = req.body;
   try {
     await admin.auth().updateUser(id, { password: newPassword });

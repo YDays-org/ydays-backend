@@ -1,3 +1,4 @@
+import stripe from "../../config/stripe.js";
 import prisma from "../../lib/prisma.js";
 import { startOfDay, endOfDay } from "date-fns";
 import { sendMail } from "../../lib/email.js";
@@ -49,7 +50,7 @@ export const createReservation = async (req, res) => {
   const { id: userId } = req.user;
 
   try {
-    const { booking } = await prisma.$transaction(async (tx) => {
+    const { newBooking, partnerUser } = await prisma.$transaction(async (tx) => {
       // Step 1: Fetch schedule and listing details, locking the row.
       const schedule = await tx.pricingSchedule.findUnique({
         where: { id: scheduleId },
@@ -59,7 +60,12 @@ export const createReservation = async (req, res) => {
               promotions: {
                 include: { promotion: true },
                 where: { promotion: { isActive: true, startDate: { lte: new Date() }, endDate: { gte: new Date() } } },
-                orderBy: { promotion: { value: 'desc' } } // A simple heuristic for "best" promotion
+                orderBy: { promotion: { value: 'desc' } }
+              },
+              partner: {
+                include: {
+                  user: true // We need the partner's user info for notifications
+                }
               }
             }
           }
@@ -69,65 +75,90 @@ export const createReservation = async (req, res) => {
       if (!schedule) throw new Error("Pricing schedule not found.");
       if (!schedule.isAvailable) throw new Error("This time slot is no longer available.");
 
-      const { listing } = schedule; // Extract listing to avoid TS property warning
+      const { listing } = schedule;
+      const partnerUser = listing.partner.user;
+
+      if (!partnerUser) {
+        throw new Error("Could not find the partner associated with this listing.");
+      }
 
       const availableSlots = schedule.capacity - schedule.bookedSlots;
       if (numParticipants > availableSlots) {
         throw new Error(`Not enough available slots. Only ${availableSlots} left.`);
       }
 
-      // Step 2: Calculate final price with active promotion
+      // Optimistically increment booked slots. If partner cancels, we'll decrement.
+      await tx.pricingSchedule.update({
+        where: { id: scheduleId },
+        data: { bookedSlots: { increment: numParticipants } },
+      });
+
       const activePromotion = listing.promotions[0]?.promotion;
       let finalPricePerParticipant = schedule.price;
       if (activePromotion) {
         if (activePromotion.type === 'PERCENTAGE_DISCOUNT') {
-          finalPricePerParticipant *= (1 - activePromotion.value / 100);
+          finalPricePerParticipant *= (1 - (activePromotion.value / 100));
         } else if (activePromotion.type === 'FIXED_AMOUNT_DISCOUNT') {
           finalPricePerParticipant -= activePromotion.value;
         }
       }
       const totalPrice = finalPricePerParticipant * numParticipants;
 
-      // Step 3: Update booked slots
-      await tx.pricingSchedule.update({
-        where: { id: scheduleId },
-        data: { bookedSlots: { increment: numParticipants } },
-      });
 
-      // Step 4: Create a PENDING booking
       const newBooking = await tx.booking.create({
         data: {
           userId,
-          listingId: schedule.listingId,
+          listingId: listing.id,
           scheduleId,
           numParticipants,
           totalPrice,
-          status: "pending", // STATUS IS NOW PENDING
+          status: "PENDING", // Status is now pending partner approval
         },
       });
 
-      // Step 5: Create a PENDING payment record
-      // In a real app, this would use an ID from Stripe/PayPal
-      const gatewayTransactionId = `simulated_${newBooking.id}`;
-      await tx.payment.create({
+      // Create a notification for the partner
+      await tx.notification.create({
         data: {
-          bookingId: newBooking.id,
-          userId,
-          amount: totalPrice,
-          currency: schedule.currency,
-          status: 'pending',
-          paymentGateway: 'simulated',
-          gatewayTransactionId,
-        }
+          userId: partnerUser.id,
+          type: 'new_booking_request',
+          title: `New Booking Request for ${listing.title}`,
+          message: `A new booking for ${numParticipants} person(s) is awaiting your approval.`,
+          relatedBookingId: newBooking.id,
+          relatedListingId: listing.id,
+        },
       });
 
-      return { booking: newBooking, listing, schedule };
+
+      return { newBooking, partnerUser };
     });
+
+    // --- Notifications (outside transaction) ---
+    // 1. Send email to partner
+    sendMail({
+      to: partnerUser.email,
+      subject: `New Booking Request for ${newBooking.listing.title}`,
+      html: `
+        <h1>New Booking Request</h1>
+        <p>You have a new booking request for your listing: <strong>${newBooking.listing.title}</strong>.</p>
+        <p>A user has requested a booking for ${newBooking.numParticipants} participant(s).</p>
+        <p>Please log in to your dashboard to approve or cancel this reservation.</p>
+      `,
+    }).catch(err => console.error("Failed to send new booking email to partner:", err));
+
+    // 2. Send socket notification to partner
+    const partnerSocketId = userSocketMap[partnerUser.id];
+    if (partnerSocketId) {
+      io.to(partnerSocketId).emit("new_booking_request", {
+        title: `New Booking Request`,
+        message: `A new booking for ${newBooking.listing.title} is awaiting your approval.`,
+        bookingId: newBooking.id,
+      });
+    }
 
     res.status(201).json({
       success: true,
-      message: "Reservation created and is pending payment. Complete payment to confirm.",
-      data: booking
+      message: "Reservation request sent to the partner for approval.",
+      data: newBooking
     });
   } catch (error) {
     res.status(400).json({ success: false, message: error.message });
@@ -212,7 +243,7 @@ export const cancelReservation = async (req, res) => {
         throw new Error("Booking not found or you do not have permission to cancel it.");
       }
 
-      if (booking.status === "cancelled" || booking.status === "completed") {
+      if (booking.status === "CANCELLED" || booking.status === "COMPLETED") {
         throw new Error(`Booking cannot be cancelled as it is already ${booking.status}.`);
       }
 
@@ -229,7 +260,7 @@ export const cancelReservation = async (req, res) => {
       // Update the booking status
       const cancelledBooking = await tx.booking.update({
         where: { id },
-        data: { status: "cancelled" },
+        data: { status: "CANCELLED" },
       });
 
       return cancelledBooking;
@@ -275,7 +306,7 @@ export const updateReservation = async (req, res) => {
       if (currentBooking.userId !== userId) {
         throw new Error("You do not have permission to modify this booking.");
       }
-      if (currentBooking.status !== 'confirmed') {
+      if (currentBooking.status !== 'CONFIRMED') {
         throw new Error(`Cannot modify a booking with status '${currentBooking.status}'.`);
       }
 
@@ -324,90 +355,112 @@ export const updateReservation = async (req, res) => {
   }
 };
 
-export const handlePaymentWebhook = async (req, res) => {
-  const { gatewayTransactionId, status: paymentStatus } = req.body;
-
-  // In a real application, you would first verify the webhook signature
-  // to ensure it's a legitimate request from your payment provider.
-
-  if (paymentStatus !== 'succeeded') {
-    // Optionally handle failed payments here, e.g., by cancelling the booking
-    // and restoring the capacity. For now, we just acknowledge and return.
-    console.log(`Received non-successful payment status for ${gatewayTransactionId}. Status: ${paymentStatus}`);
-    return res.status(200).send();
-  }
+export const submitPaymentForBooking = async (req, res) => {
+  const { id: bookingId } = req.params;
+  const { id: userId } = req.user;
+  // const { cardNumber, expiryMonth, expiryYear, cvc } = req.body; // Mocked for now
 
   try {
-    const { booking, user, listing, schedule } = await prisma.$transaction(async (tx) => {
-      // 1. Find the payment record.
-      const payment = await tx.payment.findUnique({
-        where: { gatewayTransactionId },
-        include: { booking: true }
+    const { booking, partner } = await prisma.$transaction(async (tx) => {
+      // 1. Validate the booking
+      const bookingToPay = await tx.booking.findUnique({
+        where: { id: bookingId },
+        include: { listing: { include: { partner: true } }, user: true },
       });
 
-      if (!payment) throw new Error("Payment record not found.");
-      if (payment.booking.status !== 'pending') {
-        console.log(`Booking ${payment.bookingId} is already processed. Status: ${payment.booking.status}`);
-        return { booking: null }; // Gracefully exit if already handled.
-      }
+      if (!bookingToPay) throw new Error("Booking not found.");
+      if (bookingToPay.userId !== userId) throw new Error("You do not have permission to pay for this booking.");
+      if (bookingToPay.status !== 'AWAITING_PAYMENT') throw new Error(`Booking is not awaiting payment. Current status: '${bookingToPay.status}'.`);
 
-      // 2. Update payment and booking statuses.
+      // 2. "Process" the payment: Update payment and booking statuses
       await tx.payment.update({
-        where: { id: payment.id },
-        data: { status: 'succeeded' },
-      });
-
-      const updatedBooking = await tx.booking.update({
-        where: { id: payment.bookingId },
-        data: { status: 'confirmed' },
-        include: {
-          user: true,
-          listing: true,
-          schedule: true,
+        where: { bookingId: bookingId },
+        data: {
+          status: 'SUCCEEDED',
+          paymentMethodDetails: { cardType: "visa", last4: req.body.cardNumber.slice(-4) },
         },
       });
 
-      // 3. Create the persistent notification.
+      const confirmedBooking = await tx.booking.update({
+        where: { id: bookingId },
+        data: { status: 'CONFIRMED' },
+      });
+
+      // 3. Create notifications for both user and partner
       await tx.notification.create({
         data: {
-          userId: updatedBooking.userId,
-          type: 'booking_confirmed',
-          title: `Booking Confirmed: ${updatedBooking.listing.title}`,
-          message: `Your booking for ${updatedBooking.listing.title} on ${new Date(updatedBooking.schedule.startTime).toLocaleString()} is confirmed.`,
-          relatedBookingId: updatedBooking.id,
-          relatedListingId: updatedBooking.listingId,
+          userId: bookingToPay.userId,
+          type: 'BOOKING_CONFIRMED',
+          title: `Booking Confirmed: ${bookingToPay.listing.title}`,
+          message: `Your payment was successful! Your booking for ${bookingToPay.listing.title} is confirmed.`,
+          relatedBookingId: confirmedBooking.id,
+          relatedListingId: bookingToPay.listingId,
         },
       });
 
-      return {
-        booking: updatedBooking,
-        user: updatedBooking.user,
-        listing: updatedBooking.listing,
-        schedule: updatedBooking.schedule
-      };
+      await tx.notification.create({
+        data: {
+          userId: bookingToPay.listing.partner.userId,
+          type: 'BOOKING_PAID',
+          title: `Payment Received for ${bookingToPay.listing.title}`,
+          message: `The user ${bookingToPay.user.fullName} has paid for their booking.`,
+          relatedBookingId: confirmedBooking.id,
+          relatedListingId: bookingToPay.listingId,
+        },
+      });
+
+      // --- New: Update daily stats for the booking
+      await tx.listingDailyStats.upsert({
+        where: {
+          listingId_statDate: {
+            listingId: confirmedBooking.listingId,
+            statDate: new Date(new Date().setHours(0, 0, 0, 0)),
+          }
+        },
+        create: {
+          listingId: confirmedBooking.listingId,
+          statDate: new Date(new Date().setHours(0, 0, 0, 0)),
+          bookingCount: 1,
+        },
+        update: {
+          bookingCount: { increment: 1 },
+        },
+      });
+
+      return { booking: confirmedBooking, partner: bookingToPay.listing.partner };
     });
 
-    if (!booking) {
-      return res.status(200).json({ success: true, message: "Webhook for an already processed booking received." });
-    }
+    // --- Out-of-transaction notifications ---
 
-    // --- Post-Transaction Side Effects (Moved from createReservation) ---
+    // Notify User of success
     sendMail({
-      to: user.email,
-      subject: `Your Booking for ${listing.title} is Confirmed!`,
-      html: `<h1>Booking Confirmation</h1><p>Hi ${user.fullName},</p><p>Your booking for <strong>${listing.title}</strong> on ${new Date(schedule.startTime).toLocaleString()} is confirmed.</p>`,
+      to: booking.user.email,
+      subject: `Booking Confirmed: ${booking.listing.title}!`,
+      html: `<h1>Booking Confirmed!</h1><p>Hi ${booking.user.fullName},</p><p>Your payment was successful and your booking for <strong>${booking.listing.title}</strong> is now confirmed.</p><p>Enjoy your activity!</p>`,
     }).catch(err => console.error("Failed to send booking confirmation email:", err));
 
-    const receiverSocketId = userSocketMap[user.id];
-    if (receiverSocketId) {
-      io.to(receiverSocketId).emit("new_booking_notification", {
-        title: `Booking Confirmed: ${listing.title}`,
-        message: `Your booking for ${new Date(schedule.startTime).toLocaleString()} is confirmed.`,
+    const userSocketId = userSocketMap[booking.userId];
+    if (userSocketId) {
+      io.to(userSocketId).emit("booking_confirmed_notification", {
+        type: 'BOOKING_CONFIRMED',
+        title: `Booking Confirmed: ${booking.listing.title}!`,
+        message: 'Your payment was successful and your booking is confirmed.',
         bookingId: booking.id,
       });
     }
 
-    res.status(200).json({ success: true, message: "Webhook processed successfully." });
+    // Notify Partner of payment
+    const partnerSocketId = userSocketMap[partner.userId];
+    if (partnerSocketId) {
+      io.to(partnerSocketId).emit("booking_paid_notification", {
+        type: 'BOOKING_PAID',
+        title: `Payment Received for: ${booking.listing.title}`,
+        message: `A booking has been paid for and is now confirmed.`,
+        bookingId: booking.id,
+      });
+    }
+
+    res.status(200).json({ success: true, message: "Payment successful. Booking is confirmed." });
 
   } catch (error) {
     res.status(400).json({ success: false, message: error.message });

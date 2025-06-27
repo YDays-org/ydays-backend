@@ -12,7 +12,7 @@ export const getListings = async (req, res) => {
   const offset = (page - 1) * limit;
   const amenityIds = amenities ? amenities.split(',').map(id => parseInt(id.trim(), 10)).filter(Number.isInteger) : [];
 
-  const whereConditions = [Prisma.sql`l.status = 'published'`];
+  const whereConditions = [Prisma.sql`l.status = 'PUBLISHED'`];
   let joinClauses = [];
   const havingConditions = [];
 
@@ -46,59 +46,65 @@ export const getListings = async (req, res) => {
   const havingClause = havingConditions.length > 0 ? Prisma.sql`HAVING ${Prisma.join(havingConditions, ' AND ')}` : Prisma.empty;
   const finalJoins = Prisma.join(joinClauses, ' ');
 
-  const query = Prisma.sql`
-    WITH listing_prices AS (
+  const baseQuery = Prisma.sql`
+    FROM listings l
+    JOIN categories c ON l.category_id = c.id
+    ${finalJoins}
+    WHERE ${whereClause}
+    GROUP BY l.id, c.id
+  `;
+
+  const subquery = Prisma.sql`
+    SELECT l.id, MIN(lp.final_price) as cheapest_price, l.average_rating, l.review_count
+    FROM listings l
+    JOIN (
       SELECT
-        l.id,
-        ps.price AS base_price,
-        promo.type AS promotion_type,
-        promo.value AS promotion_value,
+        ps.listing_id,
         CASE
           WHEN promo.type = 'PERCENTAGE_DISCOUNT' THEN ps.price * (1 - promo.value / 100)
           WHEN promo.type = 'FIXED_AMOUNT_DISCOUNT' THEN ps.price - promo.value
           ELSE ps.price
         END AS final_price
-      FROM listings l
-      JOIN pricing_schedules ps ON l.id = ps.listing_id
-      LEFT JOIN listing_promotions lp ON l.id = lp.listing_id
+      FROM pricing_schedules ps
+      LEFT JOIN listing_promotions lp ON ps.listing_id = lp.listing_id
       LEFT JOIN promotions promo ON lp.promotion_id = promo.id
         AND promo.is_active = TRUE
         AND NOW() BETWEEN promo.start_date AND promo.end_date
-    )
-    SELECT
-      l.*,
-      MIN(lp.final_price) as cheapest_price,
+    ) as lp ON l.id = lp.listing_id
+    ${finalJoins}
+    JOIN categories c ON l.category_id = c.id
+    WHERE ${whereClause}
+    GROUP BY l.id
+    ${havingClause}
+  `;
+
+  const countQuery = Prisma.sql`SELECT COUNT(*) FROM (${subquery}) AS sub`;
+  const dataQuery = Prisma.sql`
+    SELECT l.*, filtered.cheapest_price,
       (SELECT json_agg(json_build_object('url', lm.media_url, 'is_cover', lm.is_cover)) FROM listing_media lm WHERE lm.listing_id = l.id AND lm.is_cover = true LIMIT 1) as cover_image
     FROM listings l
-    JOIN categories c ON l.category_id = c.id
-    ${finalJoins}
-    JOIN listing_prices lp ON l.id = lp.id
-    WHERE ${whereClause}
-    GROUP BY l.id, c.id
-    ${havingClause}
-    ORDER BY l.average_rating DESC, l.review_count DESC
+    JOIN (${subquery}) as filtered ON l.id = filtered.id
+    ORDER BY filtered.average_rating DESC, filtered.review_count DESC
     LIMIT ${limit}
     OFFSET ${offset};
   `;
 
-  const countQuery = Prisma.sql`SELECT COUNT(DISTINCT l.id) FROM listings l JOIN categories c ON l.category_id = c.id ${finalJoins} WHERE ${whereClause};`;
-
   try {
     const [totalResult, listings] = await prisma.$transaction([
       prisma.$queryRaw(countQuery),
-      prisma.$queryRaw(query)
+      prisma.$queryRaw(dataQuery)
     ]);
 
-    const total = totalResult[0] ? Number(totalResult[0].count) : 0;
+    const total = totalResult[0] ? BigInt(totalResult[0].count) : 0n;
 
     res.status(200).json({
       success: true,
       data: listings,
       pagination: {
-        total,
+        total: Number(total),
         page,
         limit,
-        totalPages: Math.ceil(total / limit),
+        totalPages: Math.ceil(Number(total) / limit),
       },
     });
   } catch (error) {
@@ -129,6 +135,25 @@ export const getListingById = async (req, res) => {
     if (!listing) {
       return res.status(404).json({ success: false, message: "Listing not found." });
     }
+
+    // Fire-and-forget the stat update. No need to await it.
+    prisma.listingDailyStats.upsert({
+      where: {
+        listingId_statDate: {
+          listingId: id,
+          statDate: new Date(new Date().setHours(0, 0, 0, 0)),
+        }
+      },
+      create: {
+        listingId: id,
+        statDate: new Date(new Date().setHours(0, 0, 0, 0)),
+        viewCount: 1,
+      },
+      update: {
+        viewCount: { increment: 1 },
+      },
+    }).catch(console.error);
+
     res.status(200).json({ success: true, data: listing });
   } catch (error) {
     res.status(500).json({ success: false, message: "Failed to fetch listing.", error: error.message });
@@ -350,7 +375,7 @@ export const getPersonalizedFeed = async (req, res) => {
     }
     // Always exclude listings they've already booked or favorited.
     where.id = { notIn: interactedListingIds };
-    where.status = 'published';
+    where.status = 'PUBLISHED';
 
     // 4. Find listings to recommend.
     const recommendedListings = await prisma.listing.findMany({
