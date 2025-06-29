@@ -144,15 +144,22 @@ export const getReservations = async (req, res) => {
   };
 
   try {
+    const parsedLimit = parseInt(limit, 10) || 20; // Default to 20 if limit is invalid
+    const parsedPage = parseInt(page, 10) || 1; // Default to page 1 if invalid
+    const skip = (parsedPage - 1) * parsedLimit; // Calculate skip value
+
     const bookings = await prisma.booking.findMany({
       where,
       include: {
         listing: {
-          select: { id: true, title: true, address: true },
+          select: { id: true, title: true },
+        },
+        user: {
+          select: { id: true, fullName: true, email: true },
         },
       },
-      skip: (page - 1) * limit,
-      take: limit,
+      skip, // Ensure skip is always passed
+      take: parsedLimit,
       orderBy: {
         createdAt: "desc",
       },
