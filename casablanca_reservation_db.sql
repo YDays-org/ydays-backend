@@ -1,40 +1,57 @@
 -- YDAYS 2025 - Casablanca Discovery Platform
 -- FINAL CONSOLIDATED & PROFESSIONAL Database Schema
 --
--- Version: 2.0
+-- Version: 2.1 (Corrected and Patched)
 -- Changelog:
--- - INTEGRATED: A robust Promotions Engine to replace the 'is_promoted' flag.
--- - INTEGRATED: A dedicated Payments table, removing payment details from the bookings table.
--- - INTEGRATED: A daily statistics table for partner analytics and reporting.
--- - All changes from v1.1 are included.
+-- - Patched all inconsistencies with the Prisma schema.
+-- - Changed the primary key of the 'users' table to VARCHAR(255) to support Firebase UID.
+-- - Removed the 'password_hash' column from the 'users' table.
+-- - Updated all foreign keys referencing 'users.id' to VARCHAR(255).
+-- - Added 'AWAITING_PAYMENT' to the 'booking_status' enum.
+-- - Created a 'notification_type' enum to match the Prisma schema.
+-- - Added a UNIQUE constraint to 'booking_id' in the 'payments' table.
+-- - All changes from v2.0 are included.
 
 -- PRELIMINARIES --
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 CREATE EXTENSION IF NOT EXISTS postgis;
 
 -- CUSTOM TYPES --
-DO $$ BEGIN CREATE TYPE user_role AS ENUM ('customer', 'partner'); EXCEPTION WHEN duplicate_object THEN null; END $$;
-DO $$ BEGIN CREATE TYPE listing_type AS ENUM ('activity', 'event', 'restaurant'); EXCEPTION WHEN duplicate_object THEN null; END $$;
-DO $$ BEGIN CREATE TYPE listing_status AS ENUM ('published', 'draft', 'archived'); EXCEPTION WHEN duplicate_object THEN null; END $$;
-DO $$ BEGIN CREATE TYPE media_type AS ENUM ('image', 'video'); EXCEPTION WHEN duplicate_object THEN null; END $$;
-DO $$ BEGIN CREATE TYPE booking_status AS ENUM ('pending', 'confirmed', 'cancelled', 'completed'); EXCEPTION WHEN duplicate_object THEN null; END $$;
+DO $$ BEGIN CREATE TYPE user_role AS ENUM ('CUSTOMER', 'PARTNER'); EXCEPTION WHEN duplicate_object THEN null; END $$;
+DO $$ BEGIN CREATE TYPE listing_type AS ENUM ('ACTIVITY', 'EVENT', 'RESTAURANT'); EXCEPTION WHEN duplicate_object THEN null; END $$;
+DO $$ BEGIN CREATE TYPE listing_status AS ENUM ('PUBLISHED', 'DRAFT', 'ARCHIVED'); EXCEPTION WHEN duplicate_object THEN null; END $$;
+DO $$ BEGIN CREATE TYPE media_type AS ENUM ('IMAGE', 'VIDEO'); EXCEPTION WHEN duplicate_object THEN null; END $$;
+DO $$ BEGIN CREATE TYPE booking_status AS ENUM ('PENDING', 'CONFIRMED', 'CANCELLED', 'COMPLETED', 'AWAITING_PAYMENT'); EXCEPTION WHEN duplicate_object THEN null; END $$;
 
 -- ★ NEW ★ ENUMs for new features
-DO $$ BEGIN 
+DO $$ BEGIN
     CREATE TYPE promotion_type AS ENUM (
-        'PERCENTAGE_DISCOUNT', 
+        'PERCENTAGE_DISCOUNT',
         'FIXED_AMOUNT_DISCOUNT',
         'VISIBILITY_BOOST'
-    ); 
+    );
 EXCEPTION WHEN duplicate_object THEN null; END $$;
 
 DO $$ BEGIN
     CREATE TYPE payment_status AS ENUM (
-        'pending', 
-        'succeeded', 
-        'failed', 
-        'refunded',
-        'partially_refunded'
+        'PENDING',
+        'SUCCEEDED',
+        'FAILED',
+        'REFUNDED',
+        'PARTIALLY_REFUNDED'
+    );
+EXCEPTION WHEN duplicate_object THEN null; END $$;
+
+DO $$ BEGIN
+    CREATE TYPE notification_type AS ENUM (
+        'NEW_BOOKING_REQUEST',
+        'USER_CANCELLED_BOOKING',
+        'BOOKING_PAID',
+        'BOOKING_APPROVED_FOR_PAYMENT',
+        'BOOKING_CONFIRMED',
+        'BOOKING_CANCELLED_BY_PARTNER',
+        'BOOKING_MODIFIED',
+        'RESERVATION_REMINDER'
     );
 EXCEPTION WHEN duplicate_object THEN null; END $$;
 
@@ -42,10 +59,9 @@ EXCEPTION WHEN duplicate_object THEN null; END $$;
 -- TABLE DEFINITIONS --
 
 CREATE TABLE IF NOT EXISTS users (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    id VARCHAR(255) PRIMARY KEY,
     email VARCHAR(255) UNIQUE NOT NULL,
     email_verified BOOLEAN NOT NULL DEFAULT FALSE,
-    password_hash VARCHAR(255) NOT NULL,
     full_name VARCHAR(100),
     role user_role NOT NULL,
     profile_picture_url TEXT,
@@ -57,7 +73,7 @@ CREATE TABLE IF NOT EXISTS users (
 
 CREATE TABLE IF NOT EXISTS user_devices (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    user_id VARCHAR(255) NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     device_token TEXT NOT NULL,
     device_type VARCHAR(50),
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
@@ -66,7 +82,7 @@ CREATE TABLE IF NOT EXISTS user_devices (
 
 CREATE TABLE IF NOT EXISTS partners (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    user_id UUID UNIQUE NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    user_id VARCHAR(255) UNIQUE NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     company_name VARCHAR(255) NOT NULL,
     company_address TEXT,
     website_url TEXT,
@@ -93,8 +109,7 @@ CREATE TABLE IF NOT EXISTS listings (
     opening_hours JSONB,
     cancellation_policy TEXT,
     accessibility_info TEXT,
-    status listing_status NOT NULL DEFAULT 'draft',
-    -- NOTICE: 'is_promoted' column has been REMOVED and is replaced by the promotions engine.
+    status listing_status NOT NULL DEFAULT 'DRAFT',
     average_rating NUMERIC(3, 2) DEFAULT 0,
     review_count INT DEFAULT 0,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
@@ -137,20 +152,19 @@ CREATE TABLE IF NOT EXISTS pricing_schedules (
 
 CREATE TABLE IF NOT EXISTS bookings (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    user_id UUID NOT NULL REFERENCES users(id),
+    user_id VARCHAR(255) NOT NULL REFERENCES users(id),
     listing_id UUID NOT NULL REFERENCES listings(id),
     schedule_id UUID NOT NULL REFERENCES pricing_schedules(id),
     num_participants INT NOT NULL,
     total_price NUMERIC(10, 2) NOT NULL,
-    status booking_status NOT NULL DEFAULT 'pending',
-    -- NOTICE: 'payment_intent_id' column has been REMOVED and is replaced by the payments table.
+    status booking_status NOT NULL DEFAULT 'PENDING',
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
 CREATE TABLE IF NOT EXISTS reviews (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    user_id UUID NOT NULL REFERENCES users(id),
+    user_id VARCHAR(255) NOT NULL REFERENCES users(id),
     listing_id UUID NOT NULL REFERENCES listings(id) ON DELETE CASCADE,
     booking_id UUID UNIQUE NOT NULL REFERENCES bookings(id),
     rating INT NOT NULL CHECK (rating >= 1 AND rating <= 5),
@@ -161,7 +175,7 @@ CREATE TABLE IF NOT EXISTS reviews (
 );
 
 CREATE TABLE IF NOT EXISTS favorites (
-    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    user_id VARCHAR(255) NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     listing_id UUID NOT NULL REFERENCES listings(id) ON DELETE CASCADE,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     PRIMARY KEY (user_id, listing_id)
@@ -169,8 +183,8 @@ CREATE TABLE IF NOT EXISTS favorites (
 
 CREATE TABLE IF NOT EXISTS notifications (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-    type VARCHAR(50) NOT NULL,
+    user_id VARCHAR(255) NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    type notification_type NOT NULL,
     title VARCHAR(255) NOT NULL,
     message TEXT NOT NULL,
     is_read BOOLEAN DEFAULT FALSE,
@@ -215,11 +229,11 @@ CREATE TABLE IF NOT EXISTS listing_daily_stats (
 -- 3. Dedicated Payments Table
 CREATE TABLE IF NOT EXISTS payments (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    booking_id UUID NOT NULL REFERENCES bookings(id),
-    user_id UUID NOT NULL REFERENCES users(id),
+    booking_id UUID UNIQUE NOT NULL REFERENCES bookings(id),
+    user_id VARCHAR(255) NOT NULL REFERENCES users(id),
     amount NUMERIC(10, 2) NOT NULL,
     currency VARCHAR(3) NOT NULL,
-    status payment_status NOT NULL DEFAULT 'pending',
+    status payment_status NOT NULL DEFAULT 'PENDING',
     payment_gateway VARCHAR(50) NOT NULL,
     gateway_transaction_id VARCHAR(255) UNIQUE NOT NULL,
     payment_method_details JSONB,
@@ -254,13 +268,3 @@ CREATE INDEX IF NOT EXISTS notifications_user_id_idx ON notifications(user_id);
 CREATE INDEX IF NOT EXISTS idx_promotions_partner_id ON promotions(partner_id);
 CREATE INDEX IF NOT EXISTS idx_listing_daily_stats_date ON listing_daily_stats(stat_date);
 CREATE INDEX IF NOT EXISTS idx_payments_booking_id ON payments(booking_id);
-
-
--- INITIAL DATA --
-INSERT INTO categories (name, slug) VALUES
-('Restaurants', 'restaurants'),
-('Activités Culturelles', 'cultural-activities'),
-('Événements', 'events'),
-('Tendances', 'trending'),
-('Nouveautés', 'new')
-ON CONFLICT (name) DO NOTHING;
