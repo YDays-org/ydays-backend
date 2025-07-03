@@ -97,16 +97,16 @@ export const getListings = async (req, res) => {
 
     const total = totalResult[0] ? BigInt(totalResult[0].count) : 0n;
 
-    res.status(200).json({
-      success: true,
-      data: listings,
-      pagination: {
-        total: Number(total),
-        page,
-        limit,
-        totalPages: Math.ceil(Number(total) / limit),
-      },
-    });
+    // res.status(200).json({
+    //   success: true,
+    //   data: listings,
+    //   pagination: {
+    //     total: Number(total),
+    //     page,
+    //     limit,
+    //     totalPages: Math.ceil(Number(total) / limit),
+    //   },
+    // });
   } catch (error) {
     console.error("Failed to fetch listings with raw query:", error);
     res.status(500).json({ success: false, message: "Failed to fetch listings.", error: error.message });
