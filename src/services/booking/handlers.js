@@ -1,4 +1,3 @@
-import stripe from "../../config/stripe.js";
 import prisma from "../../lib/prisma.js";
 import { startOfDay, endOfDay } from "date-fns";
 import { sendMail } from "../../lib/email.js";

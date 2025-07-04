@@ -12,76 +12,88 @@ export const getListings = async (req, res) => {
   const offset = (page - 1) * limit;
   const amenityIds = amenities ? amenities.split(',').map(id => parseInt(id.trim(), 10)).filter(Number.isInteger) : [];
 
-  const whereConditions = [Prisma.sql`l.status = 'PUBLISHED'`];
-  let joinClauses = [];
+  // Separate where conditions for different parts of the query
+  const listingWhereConditions = [Prisma.sql`l.status = 'PUBLISHED'`];
+  const scheduleWhereConditions = []; // For the subquery on pricing_schedules
   const havingConditions = [];
+  let joinClauses = [];
 
   if (q) {
-    whereConditions.push(Prisma.sql`(l.title ILIKE ${'%' + q + '%'} OR l.description ILIKE ${'%' + q + '%'})`);
+    listingWhereConditions.push(Prisma.sql`(l.title ILIKE ${'%' + q + '%'} OR l.description ILIKE ${'%' + q + '%'})`);
   }
   if (category) {
-    whereConditions.push(Prisma.sql`c.slug = ${category}`);
+    // This requires a join, which we already have.
+    listingWhereConditions.push(Prisma.sql`c.slug = ${category}`);
   }
   if (lat && lon && radius) {
-    whereConditions.push(Prisma.sql`ST_DWithin(l.location, ST_MakePoint(${parseFloat(lon)}, ${parseFloat(lat)})::geography, ${radius})`);
+    listingWhereConditions.push(Prisma.sql`ST_DWithin(l.location, ST_MakePoint(${parseFloat(lon)}, ${parseFloat(lat)})::geography, ${radius})`);
   }
   if (amenityIds.length > 0) {
     joinClauses.push(Prisma.sql`INNER JOIN listing_amenities la ON l.id = la.listing_id`);
-    whereConditions.push(Prisma.sql`la.amenity_id = ANY(${amenityIds})`);
+    listingWhereConditions.push(Prisma.sql`la.amenity_id = ANY(${amenityIds})`);
   }
+
+  // Price filters operate on the final aggregated price, so they use HAVING
   if (priceMin !== undefined) {
     havingConditions.push(Prisma.sql`MIN(final_price) >= ${parseFloat(priceMin)}`);
   }
   if (priceMax !== undefined) {
     havingConditions.push(Prisma.sql`MIN(final_price) <= ${parseFloat(priceMax)}`);
   }
+
+  // Date filters operate on the schedule, so they go into the schedule subquery
   if (dateStart) {
-    whereConditions.push(Prisma.sql`ps.start_time >= ${dateStart}::timestamptz`);
+    scheduleWhereConditions.push(Prisma.sql`ps.start_time >= ${dateStart}::timestamptz`);
   }
   if (dateEnd) {
-    whereConditions.push(Prisma.sql`ps.end_time <= ${dateEnd}::timestamptz`);
+    scheduleWhereConditions.push(Prisma.sql`ps.end_time <= ${dateEnd}::timestamptz`);
   }
 
-  const whereClause = Prisma.join(whereConditions, ' AND ');
+  const listingWhereClause = Prisma.join(listingWhereConditions, ' AND ');
+  const scheduleWhereClause = scheduleWhereConditions.length > 0 ? Prisma.sql`WHERE ${Prisma.join(scheduleWhereConditions, ' AND ')}` : Prisma.empty;
   const havingClause = havingConditions.length > 0 ? Prisma.sql`HAVING ${Prisma.join(havingConditions, ' AND ')}` : Prisma.empty;
   const finalJoins = Prisma.join(joinClauses, ' ');
 
-  const baseQuery = Prisma.sql`
-    FROM listings l
-    JOIN categories c ON l.category_id = c.id
-    ${finalJoins}
-    WHERE ${whereClause}
-    GROUP BY l.id, c.id
-  `;
-
   const subquery = Prisma.sql`
-    SELECT l.id, MIN(lp.final_price) as cheapest_price, l.average_rating, l.review_count
+    SELECT
+        l.id,
+        MIN(lp.final_price) as cheapest_price,
+        l.average_rating,
+        l.review_count
     FROM listings l
     JOIN (
-      SELECT
-        ps.listing_id,
-        CASE
-          WHEN promo.type = 'PERCENTAGE_DISCOUNT' THEN ps.price * (1 - promo.value / 100)
-          WHEN promo.type = 'FIXED_AMOUNT_DISCOUNT' THEN ps.price - promo.value
-          ELSE ps.price
-        END AS final_price
-      FROM pricing_schedules ps
-      LEFT JOIN listing_promotions lp ON ps.listing_id = lp.listing_id
-      LEFT JOIN promotions promo ON lp.promotion_id = promo.id
-        AND promo.is_active = TRUE
-        AND NOW() BETWEEN promo.start_date AND promo.end_date
+        SELECT
+            ps.listing_id,
+            CASE
+                WHEN promo.type = 'PERCENTAGE_DISCOUNT' THEN ps.price * (1 - promo.value / 100)
+                WHEN promo.type = 'FIXED_AMOUNT_DISCOUNT' THEN ps.price - promo.value
+                ELSE ps.price
+            END AS final_price
+        FROM pricing_schedules ps
+        LEFT JOIN listing_promotions lp_join ON ps.listing_id = lp_join.listing_id
+        LEFT JOIN promotions promo ON lp_join.promotion_id = promo.id
+            AND promo.is_active = TRUE
+            AND NOW() BETWEEN promo.start_date AND promo.end_date
+        ${scheduleWhereClause}
     ) as lp ON l.id = lp.listing_id
     ${finalJoins}
     JOIN categories c ON l.category_id = c.id
-    WHERE ${whereClause}
+    WHERE ${listingWhereClause}
     GROUP BY l.id
     ${havingClause}
   `;
 
   const countQuery = Prisma.sql`SELECT COUNT(*) FROM (${subquery}) AS sub`;
   const dataQuery = Prisma.sql`
-    SELECT l.*, filtered.cheapest_price,
-      (SELECT json_agg(json_build_object('url', lm.media_url, 'is_cover', lm.is_cover)) FROM listing_media lm WHERE lm.listing_id = l.id AND lm.is_cover = true LIMIT 1) as cover_image
+    SELECT
+      l.*,
+      filtered.cheapest_price,
+      (
+        SELECT jsonb_build_object('mediaUrl', lm.media_url, 'isCover', lm.is_cover)
+        FROM listing_media lm
+        WHERE lm.listing_id = l.id AND lm.is_cover = true
+        LIMIT 1
+      ) as cover_image
     FROM listings l
     JOIN (${subquery}) as filtered ON l.id = filtered.id
     ORDER BY filtered.average_rating DESC, filtered.review_count DESC
@@ -97,16 +109,16 @@ export const getListings = async (req, res) => {
 
     const total = totalResult[0] ? BigInt(totalResult[0].count) : 0n;
 
-    // res.status(200).json({
-    //   success: true,
-    //   data: listings,
-    //   pagination: {
-    //     total: Number(total),
-    //     page,
-    //     limit,
-    //     totalPages: Math.ceil(Number(total) / limit),
-    //   },
-    // });
+    res.status(200).json({
+      success: true,
+      data: listings,
+      pagination: {
+        total: Number(total),
+        page,
+        limit,
+        totalPages: Math.ceil(Number(total) / limit),
+      },
+    });
   } catch (error) {
     console.error("Failed to fetch listings with raw query:", error);
     res.status(500).json({ success: false, message: "Failed to fetch listings.", error: error.message });
@@ -237,6 +249,12 @@ export const updateListing = async (req, res) => {
     }
 
     const updatedListing = await prisma.$transaction(async (tx) => {
+      // If metadata is being updated, merge it with existing metadata.
+      if (updateData.metadata) {
+        const existingMetadata = (existingListing.metadata || {});
+        updateData.metadata = { ...existingMetadata, ...updateData.metadata };
+      }
+
       const listing = await tx.listing.update({
         where: { id },
         data: {

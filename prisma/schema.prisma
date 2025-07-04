@@ -61,12 +61,10 @@ enum PaymentStatus {
 }
 
 enum NotificationType {
-  // To Partner
   NEW_BOOKING_REQUEST
   USER_CANCELLED_BOOKING
   BOOKING_PAID
   
-  // To User
   BOOKING_APPROVED_FOR_PAYMENT
   BOOKING_CONFIRMED
   BOOKING_CANCELLED_BY_PARTNER
@@ -145,7 +143,11 @@ model Listing {
   description        String?
   address            String
   location           Unsupported("geography(Point, 4326)")
+  phoneNumber        String?             @map("phone_number")
+  website            String?             @map("website_url")
   openingHours       Json?               @map("opening_hours")
+  workingDays        String[]            @map("working_days")
+  metadata           Json?
   cancellationPolicy String?             @map("cancellation_policy")
   accessibilityInfo  String?             @map("accessibility_info")
   status             ListingStatus       @default(DRAFT)

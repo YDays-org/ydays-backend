@@ -4,7 +4,7 @@ import { sendMail } from "../../lib/email.js";
 
 export const signUp = async (req, res) => {
   const { email, password, fullName, phoneNumber } = req.body;
-  let userRecord = null; // Keep track of the created Firebase user
+  let userRecord = null; 
 
   try {
     const existingUserInDb = await prisma.user.findUnique({
