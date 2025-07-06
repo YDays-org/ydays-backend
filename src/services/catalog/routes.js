@@ -15,6 +15,18 @@ router.get(
 );
 
 router.get(
+  "/listings/new",
+  validationMiddleware(catalogSchemas.trendingAndNewListingSchema),
+  catalogHandlers.getNewListings
+);
+
+router.get(
+  "/listings/trending",
+  validationMiddleware(catalogSchemas.trendingAndNewListingSchema),
+  catalogHandlers.getTrendingListings
+);
+
+router.get(
   "/listings/:id",
   validationMiddleware(catalogSchemas.listingIdParamSchema),
   catalogHandlers.getListingById

@@ -19,6 +19,7 @@ datasource db {
 enum UserRole {
   CUSTOMER
   PARTNER
+  ADMIN
 }
 
 enum ListingType {

@@ -190,6 +190,98 @@ export const getAmenities = async (req, res) => {
   }
 };
 
+export const getNewListings = async (req, res) => {
+  const { page, limit } = req.query;
+
+  try {
+    const listings = await prisma.listing.findMany({
+      where: { status: 'PUBLISHED' },
+      orderBy: { createdAt: 'desc' },
+      take: limit,
+      skip: (page - 1) * limit,
+      include: {
+        media: { where: { isCover: true }, take: 1 },
+      },
+    });
+
+    const total = await prisma.listing.count({ where: { status: 'PUBLISHED' } });
+
+    res.status(200).json({
+      success: true,
+      data: listings,
+      pagination: {
+        total,
+        page,
+        limit,
+        totalPages: Math.ceil(total / limit),
+      },
+    });
+  } catch (error) {
+    res.status(500).json({ success: false, message: "Failed to fetch new listings.", error: error.message });
+  }
+};
+
+export const getTrendingListings = async (req, res) => {
+  const { page, limit } = req.query;
+  const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+
+  // This raw query calculates a trend score and fetches the listings.
+  // Score = (total views * 1) + (total bookings * 3) in the last 7 days.
+  const query = Prisma.sql`
+    SELECT
+      l.*,
+      (
+        SELECT jsonb_build_object('mediaUrl', lm.media_url, 'isCover', lm.is_cover)
+        FROM listing_media lm
+        WHERE lm.listing_id = l.id AND lm.is_cover = true
+        LIMIT 1
+      ) as cover_image,
+      s.trend_score
+    FROM listings l
+    JOIN (
+      SELECT
+        listing_id,
+        SUM(view_count) + (SUM(booking_count) * 3) AS trend_score
+      FROM listing_daily_stats
+      WHERE stat_date >= ${sevenDaysAgo}
+      GROUP BY listing_id
+    ) s ON l.id = s.listing_id
+    WHERE l.status = 'PUBLISHED'
+    ORDER BY s.trend_score DESC, l.average_rating DESC
+    LIMIT ${limit}
+    OFFSET ${(page - 1) * limit};
+  `;
+
+  const countQuery = Prisma.sql`
+    SELECT COUNT(DISTINCT listing_id)
+    FROM listing_daily_stats
+    WHERE stat_date >= ${sevenDaysAgo};
+  `;
+
+  try {
+    const [listings, totalResult] = await prisma.$transaction([
+      prisma.$queryRaw(query),
+      prisma.$queryRaw(countQuery),
+    ]);
+
+    const total = totalResult[0] ? Number(totalResult[0].count) : 0;
+
+    res.status(200).json({
+      success: true,
+      data: listings,
+      pagination: {
+        total,
+        page,
+        limit,
+        totalPages: Math.ceil(total / limit),
+      },
+    });
+  } catch (error) {
+    console.error("Failed to fetch trending listings:", error);
+    res.status(500).json({ success: false, message: "Failed to fetch trending listings.", error: error.message });
+  }
+};
+
 // PARTNER-PROTECTED HANDLERS
 export const createListing = async (req, res) => {
   const { amenityIds, location, ...listingData } = req.body;
