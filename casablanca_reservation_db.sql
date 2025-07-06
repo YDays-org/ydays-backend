@@ -17,7 +17,7 @@ CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 CREATE EXTENSION IF NOT EXISTS postgis;
 
 -- CUSTOM TYPES --
-DO $$ BEGIN CREATE TYPE user_role AS ENUM ('CUSTOMER', 'PARTNER'); EXCEPTION WHEN duplicate_object THEN null; END $$;
+DO $$ BEGIN CREATE TYPE user_role AS ENUM ('CUSTOMER', 'PARTNER', 'ADMIN'); EXCEPTION WHEN duplicate_object THEN null; END $$;
 DO $$ BEGIN CREATE TYPE listing_type AS ENUM ('ACTIVITY', 'EVENT', 'RESTAURANT'); EXCEPTION WHEN duplicate_object THEN null; END $$;
 DO $$ BEGIN CREATE TYPE listing_status AS ENUM ('PUBLISHED', 'DRAFT', 'ARCHIVED'); EXCEPTION WHEN duplicate_object THEN null; END $$;
 DO $$ BEGIN CREATE TYPE media_type AS ENUM ('IMAGE', 'VIDEO'); EXCEPTION WHEN duplicate_object THEN null; END $$;
