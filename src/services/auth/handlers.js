@@ -1,10 +1,12 @@
 import prisma from "../../lib/prisma.js";
 import admin from "../../config/firebase.js";
 import { sendMail } from "../../lib/email.js";
+import { UserRole } from "@prisma/client";
 
 export const signUp = async (req, res) => {
   const { email, password, fullName, phoneNumber } = req.body;
-  let userRecord = null; // Keep track of the created Firebase user
+
+  let userRecord = null; 
 
   try {
     const existingUserInDb = await prisma.user.findUnique({
@@ -22,14 +24,14 @@ export const signUp = async (req, res) => {
       phoneNumber,
     });
 
-    await admin.auth().setCustomUserClaims(userRecord.uid, { role: "customer" });
+    await admin.auth().setCustomUserClaims(userRecord.uid, { role: UserRole.CUSTOMER });
 
     const newUser = await prisma.user.create({
       data: {
         id: userRecord.uid,
         email,
         fullName,
-        role: "customer",
+        role: UserRole.customer,
         phoneNumber,
         emailVerified: false, // Set initial state
         phoneVerified: false,
@@ -108,7 +110,7 @@ export const updateProfile = async (req, res) => {
       }
 
       // If the user has the 'partner' role, update their partner info
-      if (role === "partner") {
+      if (role === "PARTNER") {
         const allowedPartnerUpdates = {
           companyName: req.body.companyName,
           companyAddress: req.body.companyAddress,
@@ -158,27 +160,75 @@ export const sendVerificationEmail = async (req, res) => {
 export const requestPasswordReset = async (req, res) => {
   const { email } = req.body;
   try {
-    const resetLink = await admin.auth().generatePasswordResetLink(email);
-    await sendMail({
-      to: email,
-      subject: "Your Password Reset Request",
-      html: `
-        <h1>Password Reset</h1>
-        <p>You requested a password reset. Please click the link below to set a new password:</p>
-        <a href="${resetLink}" target="_blank">Reset Password</a>
-        <p>This link will expire in 1 hour. If you did not request this, please ignore this email.</p>
-      `,
+    // First check if the user exists in our database
+    const user = await prisma.user.findUnique({
+      where: { email }
     });
-    res.status(200).json({ success: true, message: `If an account with ${email} exists, a password reset link has been sent.` });
+
+    if (!user) {
+      // For security, don't reveal that the email doesn't exist
+      return res.status(200).json({ 
+        success: true, 
+        message: `Si un compte associé à ${email} existe, un lien de réinitialisation de mot de passe a été envoyé.` 
+      });
+    }
+
+    // Get the user from Firebase to check their provider data
+    try {
+      const firebaseUser = await admin.auth().getUserByEmail(email);
+      console.log(firebaseUser)
+      // Check if the user has provider data (e.g., Google, Facebook, etc.)
+      const isNativeUser = firebaseUser.providerData[0].providerId === 'phone'||firebaseUser.providerData[1].providerId === 'password';
+      
+      if (!isNativeUser) {
+        // User is registered with a third-party provider
+        return res.status(400).json({ 
+          success: false, 
+          error: `Ce compte utilise une authentification externe (Google, Facebook, etc.). Veuillez vous connecter avec cette méthode.` 
+        });
+      }
+      
+      // Generate password reset link for native users
+      const resetLink = await admin.auth().generatePasswordResetLink(email);
+      
+      // Send the reset email
+      await sendMail({
+        to: email,
+        subject: "Réinitialisation de votre mot de passe",
+        html: `
+          <h1>Réinitialisation de mot de passe</h1>
+          <p>Vous avez demandé une réinitialisation de mot de passe. Cliquez sur le lien ci-dessous pour définir un nouveau mot de passe :</p>
+          <a href="${resetLink}" target="_blank">Réinitialiser mon mot de passe</a>
+          <p>Ce lien expirera dans 1 heure. Si vous n'avez pas demandé cette réinitialisation, veuillez ignorer cet email.</p>
+        `,
+      });
+      
+      return res.status(200).json({ 
+        success: true, 
+        message: `Un lien de réinitialisation a été envoyé à ${email}.` 
+      });
+      
+    } catch (firebaseError) {
+      console.error("Firebase error when checking user:", firebaseError);
+      // If there's an issue with Firebase but we know the user exists in our DB
+      return res.status(500).json({ 
+        success: false, 
+        error: "Une erreur s'est produite lors de la vérification de votre compte. Veuillez réessayer ultérieurement." 
+      });
+    }
+    
   } catch (error) {
-    // Do not reveal if the email exists or not for security reasons.
+    // Handle any other errors
     console.error("Password reset request failed:", error);
-    res.status(200).json({ success: true, message: `If an account with ${email} exists, a password reset link has been sent.` });
+    return res.status(500).json({ 
+      success: false, 
+      error: "Une erreur s'est produite lors du traitement de votre demande. Veuillez réessayer ultérieurement." 
+    });
   }
 };
 
 export const changePassword = async (req, res) => {
-  const { id } = req.user; 
+  const { id } = req.user;
   const { newPassword } = req.body;
   try {
     await admin.auth().updateUser(id, { password: newPassword });
@@ -255,7 +305,7 @@ export const syncFirebaseUser = async (req, res) => {
           id: uid,
           email: email,
           fullName: name || email.split('@')[0], // fallback to email prefix
-          role: "customer", // default role
+          role: UserRole.customer, // default role
           emailVerified: email_verified || false,
           phoneNumber: phone_number || null,
           phoneVerified: phone_number ? true : false,

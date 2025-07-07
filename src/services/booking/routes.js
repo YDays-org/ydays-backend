@@ -6,12 +6,6 @@ import { authMiddleware } from "../../common/middlewares/auth.js";
 
 const router = Router();
 
-router.post(
-  "/payment-webhook",
-  validationMiddleware(bookingSchemas.webhookSchema),
-  bookingHandlers.handlePaymentWebhook
-);
-
 router.get(
   "/availability",
   validationMiddleware(bookingSchemas.getAvailabilitySchema),
@@ -49,6 +43,18 @@ router.patch(
   "/reservations/:id/cancel",
   validationMiddleware(bookingSchemas.bookingIdParamSchema),
   bookingHandlers.cancelReservation
+);
+
+router.post(
+  "/reservations/:id/pay",
+  validationMiddleware(bookingSchemas.paymentSchema),
+  bookingHandlers.submitPaymentForBooking
+);
+
+router.post(
+  "/payment",
+  validationMiddleware(bookingSchemas.paymentSchema),
+  bookingHandlers.processPayment
 );
 
 export default router;

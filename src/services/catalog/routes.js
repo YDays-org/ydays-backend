@@ -48,21 +48,21 @@ router.delete(
 // --- Partner-Protected Routes ---
 router.post(
   "/listings",
-  roleCheck(["partner"]),
+  roleCheck(["PARTNER"]),
   validationMiddleware(catalogSchemas.createListingSchema),
   catalogHandlers.createListing
 );
 
 router.put(
   "/listings/:id",
-  roleCheck(["partner"]),
+  roleCheck(["PARTNER"]),
   validationMiddleware(catalogSchemas.updateListingSchema),
   catalogHandlers.updateListing
 );
 
 router.delete(
   "/listings/:id",
-  roleCheck(["partner"]),
+  roleCheck(["PARTNER"]),
   validationMiddleware(catalogSchemas.listingIdParamSchema),
   catalogHandlers.deleteListing
 );

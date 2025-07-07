@@ -18,7 +18,7 @@ export const getBookingsSchema = {
   query: Joi.object({
     page: Joi.number().integer().min(1).default(1),
     limit: Joi.number().integer().min(1).max(100).default(10),
-    status: Joi.string().valid("pending", "confirmed", "cancelled", "completed"),
+    status: Joi.string().valid("PENDING", "CONFIRMED", "CANCELLED", "COMPLETED", "AWAITING_PAYMENT"),
   }),
 };
 
@@ -37,9 +37,21 @@ export const updateBookingSchema = {
   }),
 };
 
-export const webhookSchema = {
+export const paymentSchema = {
+  params: Joi.object({
+    id: Joi.string().uuid().required(),
+  }),
   body: Joi.object({
-    gatewayTransactionId: Joi.string().required(),
-    status: Joi.string().valid('succeeded', 'failed').required(),
+    cardNumber: Joi.string().creditCard().required(),
+    expiryMonth: Joi.string().length(2).required(),
+    expiryYear: Joi.string().length(4).required(),
+    cvc: Joi.string().min(3).max(4).required(),
+  })
+};
+
+export const stripePaymentSchema = {
+  body: Joi.object({
+    amount: Joi.number().integer().min(1).required(),
+    currency: Joi.string().length(3).required(),
   }),
 };

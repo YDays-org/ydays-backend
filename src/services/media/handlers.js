@@ -5,6 +5,7 @@ import { getMediaType, cleanupTempFile, deleteFromCloudinary, uploadFileToCloudi
 export const uploadSingleMedia = async (req, res) => {
   const { listingId, caption, isCover } = req.body;
   const file = req.file;
+  const partnerId = req.user.partner?.id;
   let uploadedAssetPublicId = null;
 
   if (!file) {
@@ -15,9 +16,9 @@ export const uploadSingleMedia = async (req, res) => {
 
   try {
     const savedMedia = await prisma.$transaction(async (tx) => {
-      const listing = await tx.listing.findUnique({ where: { id: listingId } });
+      const listing = await tx.listing.findFirst({ where: { id: listingId, partnerId } });
       if (!listing) {
-        throw new Error('Listing not found');
+        throw new Error('Listing not found or you do not have permission to upload to it.');
       }
 
       const cloudinaryResult = await uploadFileToCloudinary(file.path, {
@@ -43,7 +44,7 @@ export const uploadSingleMedia = async (req, res) => {
     if (uploadedAssetPublicId) {
       await deleteFromCloudinary(uploadedAssetPublicId);
     }
-    const statusCode = error.message === 'Listing not found' ? 404 : 500;
+    const statusCode = error.message.startsWith('Listing not found') ? 404 : 500;
     res.status(statusCode).json({ error: 'Failed to process upload.', details: error.message });
 
   } finally {
@@ -56,6 +57,7 @@ export const uploadSingleMedia = async (req, res) => {
 export const uploadMultipleMedia = async (req, res) => {
   const { listingId, captions } = req.body;
   const files = req.files;
+  const partnerId = req.user.partner?.id;
   const uploadedAssets = []; // Store { public_id, path } for rollback and cleanup
 
   if (!files || files.length === 0) {
@@ -67,8 +69,8 @@ export const uploadMultipleMedia = async (req, res) => {
 
   try {
     const savedMedias = await prisma.$transaction(async (tx) => {
-      const listing = await tx.listing.findUnique({ where: { id: listingId } });
-      if (!listing) throw new Error('Listing not found');
+      const listing = await tx.listing.findFirst({ where: { id: listingId, partnerId } });
+      if (!listing) throw new Error('Listing not found or you do not have permission to upload to it.');
 
       const uploadPromises = files.map((file, index) =>
         limit(async () => {
@@ -108,7 +110,7 @@ export const uploadMultipleMedia = async (req, res) => {
       await Promise.all(uploadedAssets.map(asset => deleteFromCloudinary(asset.public_id)));
     }
 
-    const statusCode = error.message === 'Listing not found' ? 404 : 500;
+    const statusCode = error.message.startsWith('Listing not found') ? 404 : 500;
     res.status(statusCode).json({ error: 'Failed to process uploads.', details: error.message });
 
   } finally {

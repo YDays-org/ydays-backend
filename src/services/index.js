@@ -6,7 +6,6 @@ import { reviewApp } from "./reviews/index.js";
 import { mediaApp } from "./media/index.js";
 import { notificationApp } from "./notifications/index.js";
 import { partnerApp } from "./partner/index.js";
-// import { authMiddleware } from "../common/middlewares/auth.js";
 
 const apiRouter = Router();
 
@@ -17,8 +16,13 @@ apiRouter.get("/", (req, res) => {
   });
 });
 
+apiRouter.get("/a", (req, res) => {
+  res.status(200).json({
+    message: "wad healthy",
+    timestamp: new Date().toISOString(),
+  });
+});
 apiRouter.use("/auth", authApp);
-// apiRouter.use(authMiddleware);
 apiRouter.use("/partner", partnerApp);
 apiRouter.use("/catalog", catalogApp);
 apiRouter.use("/booking", bookingApp);
