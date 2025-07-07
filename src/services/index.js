@@ -6,6 +6,7 @@ import { reviewApp } from "./reviews/index.js";
 import { mediaApp } from "./media/index.js";
 import { notificationApp } from "./notifications/index.js";
 import { partnerApp } from "./partner/index.js";
+import { adminApp } from "./admin/index.js";
 
 const apiRouter = Router();
 
@@ -24,6 +25,7 @@ apiRouter.get("/a", (req, res) => {
 });
 apiRouter.use("/auth", authApp);
 apiRouter.use("/partner", partnerApp);
+apiRouter.use("/admin", adminApp);
 apiRouter.use("/catalog", catalogApp);
 apiRouter.use("/booking", bookingApp);
 apiRouter.use("/reviews", reviewApp);
