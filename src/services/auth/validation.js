@@ -19,7 +19,11 @@ export const signUpSchema = {
 export const updateProfileSchema = {
   body: Joi.object({
     fullName: Joi.string().min(3),
-    phoneNumber: Joi.string().allow(null, ''),
+    phoneNumber: CustomJoi.string().phoneNumber({
+      defaultCountry: "MA",
+      format: 'e164',
+      strict: false,
+    }).allow(null, ''),
     profilePictureUrl: Joi.string().uri().allow(null, ''),
     // For partners
     companyName: Joi.string(),

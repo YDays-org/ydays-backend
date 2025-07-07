@@ -51,4 +51,10 @@ router.post(
   bookingHandlers.submitPaymentForBooking
 );
 
+router.post(
+  "/payment",
+  validationMiddleware(bookingSchemas.paymentSchema),
+  bookingHandlers.processPayment
+);
+
 export default router;

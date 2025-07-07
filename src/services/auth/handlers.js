@@ -1,9 +1,11 @@
 import prisma from "../../lib/prisma.js";
 import admin from "../../config/firebase.js";
 import { sendMail } from "../../lib/email.js";
+import { UserRole } from "@prisma/client";
 
 export const signUp = async (req, res) => {
   const { email, password, fullName, phoneNumber } = req.body;
+
   let userRecord = null; 
 
   try {
@@ -22,14 +24,14 @@ export const signUp = async (req, res) => {
       phoneNumber,
     });
 
-    await admin.auth().setCustomUserClaims(userRecord.uid, { role: "CUSTOMER" });
+    await admin.auth().setCustomUserClaims(userRecord.uid, { role: UserRole.CUSTOMER });
 
     const newUser = await prisma.user.create({
       data: {
         id: userRecord.uid,
         email,
         fullName,
-        role: "CUSTOMER",
+        role: UserRole.customer,
         phoneNumber,
         emailVerified: false, // Set initial state
         phoneVerified: false,
@@ -93,7 +95,7 @@ export const updateProfile = async (req, res) => {
     const allowedUserUpdates = {
       fullName: req.body.fullName,
       profilePictureUrl: req.body.profilePictureUrl,
-      // OMIT email, phoneNumber, and role for customer.
+      phoneNumber: req.body.phoneNumber,
     };
 
     // Filter out any undefined values so we don't overwrite existing fields with null
@@ -158,22 +160,70 @@ export const sendVerificationEmail = async (req, res) => {
 export const requestPasswordReset = async (req, res) => {
   const { email } = req.body;
   try {
-    const resetLink = await admin.auth().generatePasswordResetLink(email);
-    await sendMail({
-      to: email,
-      subject: "Your Password Reset Request",
-      html: `
-        <h1>Password Reset</h1>
-        <p>You requested a password reset. Please click the link below to set a new password:</p>
-        <a href="${resetLink}" target="_blank">Reset Password</a>
-        <p>This link will expire in 1 hour. If you did not request this, please ignore this email.</p>
-      `,
+    // First check if the user exists in our database
+    const user = await prisma.user.findUnique({
+      where: { email }
     });
-    res.status(200).json({ success: true, message: `If an account with ${email} exists, a password reset link has been sent.` });
+
+    if (!user) {
+      // For security, don't reveal that the email doesn't exist
+      return res.status(200).json({ 
+        success: true, 
+        message: `Si un compte associé à ${email} existe, un lien de réinitialisation de mot de passe a été envoyé.` 
+      });
+    }
+
+    // Get the user from Firebase to check their provider data
+    try {
+      const firebaseUser = await admin.auth().getUserByEmail(email);
+      console.log(firebaseUser)
+      // Check if the user has provider data (e.g., Google, Facebook, etc.)
+      const isNativeUser = firebaseUser.providerData[0].providerId === 'phone'||firebaseUser.providerData[1].providerId === 'password';
+      
+      if (!isNativeUser) {
+        // User is registered with a third-party provider
+        return res.status(400).json({ 
+          success: false, 
+          error: `Ce compte utilise une authentification externe (Google, Facebook, etc.). Veuillez vous connecter avec cette méthode.` 
+        });
+      }
+      
+      // Generate password reset link for native users
+      const resetLink = await admin.auth().generatePasswordResetLink(email);
+      
+      // Send the reset email
+      await sendMail({
+        to: email,
+        subject: "Réinitialisation de votre mot de passe",
+        html: `
+          <h1>Réinitialisation de mot de passe</h1>
+          <p>Vous avez demandé une réinitialisation de mot de passe. Cliquez sur le lien ci-dessous pour définir un nouveau mot de passe :</p>
+          <a href="${resetLink}" target="_blank">Réinitialiser mon mot de passe</a>
+          <p>Ce lien expirera dans 1 heure. Si vous n'avez pas demandé cette réinitialisation, veuillez ignorer cet email.</p>
+        `,
+      });
+      
+      return res.status(200).json({ 
+        success: true, 
+        message: `Un lien de réinitialisation a été envoyé à ${email}.` 
+      });
+      
+    } catch (firebaseError) {
+      console.error("Firebase error when checking user:", firebaseError);
+      // If there's an issue with Firebase but we know the user exists in our DB
+      return res.status(500).json({ 
+        success: false, 
+        error: "Une erreur s'est produite lors de la vérification de votre compte. Veuillez réessayer ultérieurement." 
+      });
+    }
+    
   } catch (error) {
-    // Do not reveal if the email exists or not for security reasons.
+    // Handle any other errors
     console.error("Password reset request failed:", error);
-    res.status(200).json({ success: true, message: `If an account with ${email} exists, a password reset link has been sent.` });
+    return res.status(500).json({ 
+      success: false, 
+      error: "Une erreur s'est produite lors du traitement de votre demande. Veuillez réessayer ultérieurement." 
+    });
   }
 };
 
@@ -204,5 +254,96 @@ export const deleteAccount = async (req, res) => {
     console.error(`Error during account deletion for user ${id}:`, error);
     console.error(`Please check if user ${id} was deleted from the database but not from Firebase.`);
     res.status(500).json({ success: false, error: "Failed to completely delete account." });
+  }
+};
+
+export const syncFirebaseUser = async (req, res) => {
+  try {
+    // Verify the Firebase token from the request
+    const authHeader = req.headers.authorization;
+    if (!authHeader || !authHeader.startsWith("Bearer ")) {
+      return res.status(401).json({ success: false, error: "No valid token provided" });
+    }
+
+    const idToken = authHeader.split(" ")[1];
+    let decodedToken;
+
+    try {
+      decodedToken = await admin.auth().verifyIdToken(idToken);
+    } catch (error) {
+      return res.status(401).json({ success: false, error: "Invalid Firebase token" });
+    }
+
+    const { uid, email, name, picture, email_verified, phone_number } = decodedToken;
+
+    // Check if user already exists in database
+    const existingUser = await prisma.user.findUnique({
+      where: { id: uid },
+      include: { partner: true }
+    });
+
+    let user;
+
+    if (existingUser) {
+      // Update existing user with latest Firebase data
+      user = await prisma.user.update({
+        where: { id: uid },
+        data: {
+          email: email,
+          fullName: name || existingUser.fullName,
+          emailVerified: email_verified || false,
+          phoneNumber: phone_number || existingUser.phoneNumber,
+          phoneVerified: phone_number ? true : existingUser.phoneVerified,
+          profilePictureUrl: picture || existingUser.profilePictureUrl,
+        },
+        include: { partner: true }
+      });
+    } else {
+      // Create new user from Firebase data
+      user = await prisma.user.create({
+        data: {
+          id: uid,
+          email: email,
+          fullName: name || email.split('@')[0], // fallback to email prefix
+          role: UserRole.customer, // default role
+          emailVerified: email_verified || false,
+          phoneNumber: phone_number || null,
+          phoneVerified: phone_number ? true : false,
+          profilePictureUrl: picture || null,
+        },
+        include: { partner: true }
+      });
+
+      // Send welcome email for new users (optional)
+      if (email) {
+        try {
+          await sendMail({
+            to: email,
+            subject: "Welcome to Casablanca Découvertes!",
+            html: `
+              <h1>Welcome to Casablanca Découvertes!</h1>
+              <p>Thank you for joining our platform. Start discovering amazing activities, events, and restaurants in Casablanca!</p>
+              <p>Explore our platform and book your next adventure.</p>
+            `,
+          });
+        } catch (emailError) {
+          console.warn("Could not send welcome email:", emailError);
+        }
+      }
+    }
+
+    res.status(200).json({
+      success: true,
+      message: existingUser ? "User data synchronized successfully" : "User created and synchronized successfully",
+      user: user
+    });
+
+  } catch (error) {
+    console.error("Error syncing Firebase user to database:", error);
+    res.status(500).json({ 
+      success: false, 
+      error: "Failed to sync user data",
+      details: error.message 
+    });
   }
 };

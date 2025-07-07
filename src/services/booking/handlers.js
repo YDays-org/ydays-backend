@@ -2,6 +2,9 @@ import prisma from "../../lib/prisma.js";
 import { startOfDay, endOfDay } from "date-fns";
 import { sendMail } from "../../lib/email.js";
 import { io, userSocketMap } from "../../config/socket.js";
+import Stripe from "stripe";
+
+const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
 
 export const getAvailability = async (req, res) => {
   const { listingId, date } = req.query;
@@ -174,15 +177,22 @@ export const getReservations = async (req, res) => {
   };
 
   try {
+    const parsedLimit = parseInt(limit, 10) || 20; // Default to 20 if limit is invalid
+    const parsedPage = parseInt(page, 10) || 1; // Default to page 1 if invalid
+    const skip = (parsedPage - 1) * parsedLimit; // Calculate skip value
+
     const bookings = await prisma.booking.findMany({
       where,
       include: {
         listing: {
-          select: { id: true, title: true, address: true },
+          select: { id: true, title: true },
+        },
+        user: {
+          select: { id: true, fullName: true, email: true },
         },
       },
-      skip: (page - 1) * limit,
-      take: limit,
+      skip, // Ensure skip is always passed
+      take: parsedLimit,
       orderBy: {
         createdAt: "desc",
       },
@@ -463,5 +473,28 @@ export const submitPaymentForBooking = async (req, res) => {
 
   } catch (error) {
     res.status(400).json({ success: false, message: error.message });
+  }
+};
+
+export const processPayment = async (req, res) => {
+  const { amount, currency } = req.body;
+
+  try {
+    const paymentIntent = await stripe.paymentIntents.create({
+      amount, // Amount in cents
+      currency, // e.g., 'usd'
+      payment_method_types: ['card'],
+    });
+
+    res.status(200).json({
+      success: true,
+      clientSecret: paymentIntent.client_secret,
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: "Failed to create payment intent.",
+      error: error.message,
+    });
   }
 };
