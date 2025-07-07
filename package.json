@@ -1,9 +1,13 @@
 {
-  "name": "backend",
+  "name": "casablanca-discovery-platform",
+  "private": true,
   "version": "1.0.0",
   "description": "",
   "type": "module",
-  "main": "index.js",
+  "workspaces": [
+    "services/*",
+    "packages/*"
+  ],
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
     "start": "node src/index.js",

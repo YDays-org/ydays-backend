@@ -1,0 +1,20 @@
+# Ignore git and docker specific files
+.git
+.gitignore
+.dockerignore
+Dockerfile
+docker-compose.yml
+nginx/
+
+# Ignore node_modules, as they are installed during the build
+node_modules
+
+# Ignore logs and local environment files
+logs
+*.log
+.env
+
+# Ignore unnecessary files
+README.md
+Ydays 2025 - Projet.txt
+casablanca_reservation_db.sql 

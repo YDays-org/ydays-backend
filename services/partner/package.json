@@ -1,0 +1,24 @@
+{
+  "name": "@casablanca/partner-service",
+  "version": "1.0.0",
+  "description": "Partner service for the Casablanca Discovery Platform",
+  "private": true,
+  "type": "module",
+  "main": "src/index.js",
+  "scripts": {
+    "start": "node src/index.js",
+    "dev": "nodemon src/index.js"
+  },
+  "dependencies": {
+    "@casablanca/common": "1.0.0",
+    "@casablanca/database": "1.0.0",
+    "express": "^5.1.0",
+    "joi": "^17.13.3",
+    "cookie-parser": "^1.4.7",
+    "cors": "^2.8.5",
+    "helmet": "^8.1.0"
+  },
+  "devDependencies": {
+    "nodemon": "^3.1.10"
+  }
+}
