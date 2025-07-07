@@ -4,7 +4,7 @@ export const getPartnerBookingsSchema = {
   query: Joi.object({
     page: Joi.number().integer().min(1).default(1),
     limit: Joi.number().integer().min(1).max(100).default(10),
-    status: Joi.string().valid("pending", "confirmed", "cancelled", "completed"),
+    status: Joi.string().valid("PENDING", "CONFIRMED", "CANCELLED", "COMPLETED", "AWAITING_PAYMENT"),
     listingId: Joi.string().uuid(),
   }),
 };
@@ -84,5 +84,15 @@ export const applyPromotionSchema = {
 export const promotionIdParamSchema = {
   params: Joi.object({
     promotionId: Joi.string().uuid().required(),
+  }),
+};
+
+export const getListingPerformanceStatsSchema = {
+  params: Joi.object({
+    listingId: Joi.string().uuid().required(),
+  }),
+  query: Joi.object({
+    startDate: Joi.date().iso().required(),
+    endDate: Joi.date().iso().min(Joi.ref('startDate')).required(),
   }),
 }; 

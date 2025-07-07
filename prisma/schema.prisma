@@ -17,32 +17,34 @@ datasource db {
 
 // ENUMS
 enum UserRole {
-  customer
-  partner
+  CUSTOMER
+  PARTNER
+  ADMIN
 }
 
 enum ListingType {
-  activity
-  event
-  restaurant
+  ACTIVITY
+  EVENT
+  RESTAURANT
 }
 
 enum ListingStatus {
-  published
-  draft
-  archived
+  PUBLISHED
+  DRAFT
+  ARCHIVED
 }
 
 enum MediaType {
-  image
-  video
+  IMAGE
+  VIDEO
 }
 
 enum BookingStatus {
-  pending
-  confirmed
-  cancelled
-  completed
+  PENDING
+  CONFIRMED
+  CANCELLED
+  COMPLETED
+  AWAITING_PAYMENT
 }
 
 enum PromotionType {
@@ -52,11 +54,23 @@ enum PromotionType {
 }
 
 enum PaymentStatus {
-  pending
-  succeeded
-  failed
-  refunded
-  partially_refunded
+  PENDING
+  SUCCEEDED
+  FAILED
+  REFUNDED
+  PARTIALLY_REFUNDED
+}
+
+enum NotificationType {
+  NEW_BOOKING_REQUEST
+  USER_CANCELLED_BOOKING
+  BOOKING_PAID
+  
+  BOOKING_APPROVED_FOR_PAYMENT
+  BOOKING_CONFIRMED
+  BOOKING_CANCELLED_BY_PARTNER
+  BOOKING_MODIFIED
+  RESERVATION_REMINDER
 }
 
 // MODELS
@@ -130,10 +144,14 @@ model Listing {
   description        String?
   address            String
   location           Unsupported("geography(Point, 4326)")
+  phoneNumber        String?             @map("phone_number")
+  website            String?             @map("website_url")
   openingHours       Json?               @map("opening_hours")
+  workingDays        String[]            @map("working_days")
+  metadata           Json?
   cancellationPolicy String?             @map("cancellation_policy")
   accessibilityInfo  String?             @map("accessibility_info")
-  status             ListingStatus       @default(draft)
+  status             ListingStatus       @default(DRAFT)
   averageRating      Decimal?            @default(0) @db.Decimal(3, 2) @map("average_rating")
   reviewCount        Int?                @default(0) @map("review_count")
   createdAt          DateTime            @default(now()) @map("created_at")
@@ -209,7 +227,7 @@ model Booking {
   scheduleId      String         @map("schedule_id")
   numParticipants Int            @map("num_participants")
   totalPrice      Decimal        @db.Decimal(10, 2) @map("total_price")
-  status          BookingStatus  @default(pending)
+  status          BookingStatus  @default(PENDING)
   createdAt       DateTime       @default(now()) @map("created_at")
   updatedAt       DateTime       @updatedAt @map("updated_at")
   review          Review?
@@ -251,7 +269,7 @@ model Notification {
   id               String   @id @default(uuid())
   user             User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   userId           String   @map("user_id")
-  type             String
+  type             NotificationType
   title            String
   message          String
   isRead           Boolean  @default(false) @map("is_read")
@@ -312,7 +330,7 @@ model Payment {
   userId               String        @map("user_id")
   amount               Decimal       @db.Decimal(10, 2)
   currency             String
-  status               PaymentStatus @default(pending)
+  status               PaymentStatus @default(PENDING)
   paymentGateway       String        @map("payment_gateway")
   gatewayTransactionId String        @unique @map("gateway_transaction_id")
   paymentMethodDetails Json?         @map("payment_method_details")

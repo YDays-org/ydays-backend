@@ -18,7 +18,7 @@ export const submitReview = async (req, res) => {
         throw new Error("You can only review your own bookings.");
       }
       // Uncomment this line if reviews should only be for 'completed' bookings
-      // if (booking.status !== 'completed') {
+      // if (booking.status !== 'COMPLETED') {
       //   throw new Error("You can only review completed bookings.");
       // }
 
