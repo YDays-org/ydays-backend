@@ -1,6 +1,6 @@
 import pLimit from 'p-limit';
-import prisma from '../../lib/prisma.js';
-import { getMediaType, cleanupTempFile, deleteFromCloudinary, uploadFileToCloudinary } from './utils/helpers.js';
+import { prisma } from '@casablanca/common';
+import { getMediaType, cleanupTempFile, deleteFromCloudinary, uploadFileToCloudinary } from '../utils/helpers.js';
 
 export const uploadSingleMedia = async (req, res) => {
   const { listingId, caption, isCover } = req.body;

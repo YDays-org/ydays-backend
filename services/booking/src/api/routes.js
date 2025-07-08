@@ -1,8 +1,7 @@
 import { Router } from "express";
-import { validationMiddleware } from "../../common/middlewares/validation.js";
+import { validationMiddleware, authMiddleware } from "@casablanca/common";
 import * as bookingHandlers from "./handlers.js";
 import * as bookingSchemas from "./validation.js";
-import { authMiddleware } from "../../common/middlewares/auth.js";
 
 const router = Router();
 

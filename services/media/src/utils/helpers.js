@@ -1,5 +1,5 @@
+import { cloudinary } from '@casablanca/common';
 import fs from 'fs/promises';
-import cloudinary from '../../../config/cloudinary.js';
 
 export const getMediaType = (mimetype) => {
   if (mimetype.startsWith('image/')) return 'IMAGE';

@@ -1,6 +1,6 @@
-// common/middlewares/auth.js (CORRECTED)
-import admin from "../../config/firebase.js";
-import prisma from "../../lib/prisma.js"; 
+import admin from "../config/firebase.js";
+import prisma from "../lib/prisma.js";
+
 
 export const authMiddleware = async (req, res, next) => {
   const authHeader = req.headers.authorization;
@@ -22,7 +22,7 @@ export const authMiddleware = async (req, res, next) => {
     if (!dbUser) {
       return res.status(404).json({ message: "Authenticated user not found in the database." });
     }
-    
+
     req.user = {
       ...dbUser, // Contains: id, email, role, fullName, partner, etc. from YOUR DB
       firebase_email_verified: decodedToken.email_verified // Add the LIVE status from Firebase

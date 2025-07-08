@@ -1,10 +1,8 @@
-import prisma from "../../lib/prisma.js";
-import admin from "../../config/firebase.js";
-import { sendMail } from "../../lib/email.js";
+import { prisma, admin, sendMail } from "@casablanca/common";
 
 export const signUp = async (req, res) => {
   const { email, password, fullName, phoneNumber } = req.body;
-  let userRecord = null; 
+  let userRecord = null;
 
   try {
     const existingUserInDb = await prisma.user.findUnique({

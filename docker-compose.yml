@@ -1,7 +1,21 @@
 version: "3.8"
 
+# Define a reusable service template to avoid repetition for common settings
+x-service-template: &service-template
+  env_file:
+    - .env
+  depends_on:
+    db:
+      condition: service_healthy
+  networks:
+    - app-network
+
 services:
+  # --- Application Microservices ---
+
   auth-service:
+    <<: *service-template
+    container_name: auth-service
     build:
       context: .
       dockerfile: Dockerfile
@@ -9,41 +23,120 @@ services:
         SERVICE_NAME: auth
     ports:
       - "3001:3000"
-    environment:
-      DB_URL: postgresql://user:password@db:5432/casablanca_db?schema=public
-      SERVER_PORT: 3000
-    depends_on:
-      db:
-        condition: service_healthy
-    networks:
-      - app-network
+
+  admin-service:
+    <<: *service-template
+    container_name: admin-service
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        SERVICE_NAME: admin
+    ports:
+      - "3002:3000"
+
+  booking-service:
+    <<: *service-template
+    container_name: booking-service
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        SERVICE_NAME: booking
+    ports:
+      - "3003:3000"
+
+  catalog-service:
+    <<: *service-template
+    container_name: catalog-service
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        SERVICE_NAME: catalog
+    ports:
+      - "3004:3000"
+
+  media-service:
+    <<: *service-template
+    container_name: media-service
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        SERVICE_NAME: media
+    ports:
+      - "3005:3000"
+
+  notifications-service:
+    <<: *service-template
+    container_name: notifications-service
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        SERVICE_NAME: notifications
+    ports:
+      - "3006:3000"
+
+  partner-service:
+    <<: *service-template
+    container_name: partner-service
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        SERVICE_NAME: partner
+    ports:
+      - "3007:3000"
+
+  reviews-service:
+    <<: *service-template
+    container_name: reviews-service
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        SERVICE_NAME: reviews
+    ports:
+      - "3008:3000"
+
+  # --- Infrastructure Services ---
 
   db:
     image: postgis/postgis:16-3.4
+    container_name: casablanca-db
     environment:
-      POSTGRES_USER: user
-      POSTGRES_PASSWORD: password
-      POSTGRES_DB: casablanca_db
+      POSTGRES_USER: ${DB_USER}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+      POSTGRES_DB: ${DB_NAME}
     volumes:
       - postgres_data:/var/lib/postgresql/data
+      - ./casablanca_reservation_db.sql:/docker-entrypoint-initdb.d/init.sql
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U user -d casablanca_db"]
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
       interval: 10s
       timeout: 5s
       retries: 5
-    depends_on:
-      - auth-service
     networks:
       - app-network
 
   nginx:
     image: nginx:1.28-alpine
+    container_name: casablanca-gateway
     ports:
       - "8080:80"
     volumes:
       - ./nginx/default.conf:/etc/nginx/conf.d/default.conf
     depends_on:
-      - app
+      - auth-service
+      - admin-service
+      - booking-service
+      - catalog-service
+      - media-service
+      - notifications-service
+      - partner-service
+      - reviews-service
     networks:
       - app-network
 

@@ -1,6 +1,4 @@
-import prisma from "../../lib/prisma.js";
-import { sendMail } from "../../lib/email.js";
-import { io, userSocketMap } from "../../config/socket.js";
+import { prisma, sendMail, io, userSocketMap } from "@casablanca/common";
 
 export const getPartnerBookings = async (req, res) => {
   const partnerId = req.user.partner?.id;

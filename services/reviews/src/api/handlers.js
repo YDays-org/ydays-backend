@@ -1,4 +1,4 @@
-import prisma from "../../lib/prisma.js";
+import { prisma } from "@casablanca/common";
 
 export const submitReview = async (req, res) => {
   const { bookingId, rating, comment } = req.body;

@@ -1,7 +1,5 @@
-import prisma from "../../lib/prisma.js";
+import { prisma, sendMail, io, userSocketMap } from "@casablanca/common";
 import { startOfDay, endOfDay } from "date-fns";
-import { sendMail } from "../../lib/email.js";
-import { io, userSocketMap } from "../../config/socket.js";
 
 export const getAvailability = async (req, res) => {
   const { listingId, date } = req.query;

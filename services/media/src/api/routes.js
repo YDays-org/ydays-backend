@@ -2,9 +2,11 @@ import { Router } from "express";
 import * as mediaHandlers from "./handlers.js";
 import * as mediaSchemas from "./validation.js";
 import { uploadMiddleware } from "./middlewares.js";
-import { validationMiddleware } from "../../common/middlewares/validation.js";
-import { authMiddleware } from "../../common/middlewares/auth.js";
-import { roleCheck } from "../../common/middlewares/roles.js";
+import {
+  validationMiddleware,
+  authMiddleware,
+  roleCheck,
+} from "@casablanca/common";
 
 const router = Router();
 

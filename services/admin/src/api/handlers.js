@@ -1,5 +1,4 @@
-import prisma from "../../lib/prisma.js";
-import admin from "../../config/firebase.js";
+import { prisma, admin } from "@casablanca/common";
 
 // --- Category Handlers ---
 
@@ -147,6 +146,26 @@ export const listUsers = async (req, res) => {
     });
   } catch (error) {
     res.status(500).json({ success: false, message: "Failed to fetch users.", error: error.message });
+  }
+};
+
+export const getUserById = async (req, res) => {
+  const { userId } = req.params;
+  try {
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      include: {
+        partner: true, // Include partner details if they exist
+      },
+    });
+
+    if (!user) {
+      return res.status(404).json({ success: false, message: 'User not found.' });
+    }
+
+    res.status(200).json({ success: true, data: user });
+  } catch (error) {
+    res.status(500).json({ success: false, message: "Failed to fetch user.", error: error.message });
   }
 };
 

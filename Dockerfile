@@ -21,7 +21,10 @@ COPY services/notifications/package.json ./services/notifications/
 COPY services/partner/package.json ./services/partner/
 COPY services/reviews/package.json ./services/reviews/
 
-# Install all monorepo dependencies
+# Copy the Prisma schema to allow client generation
+COPY packages/database/prisma ./packages/database/prisma
+
+# Install all monorepo dependencies (this will also run `prisma generate`)
 RUN npm install
 
 # 2. Builder stage to copy source code
@@ -31,6 +34,8 @@ COPY . .
 
 # 3. Final, pruned production stage
 FROM node:24-alpine AS final
+ARG SERVICE_NAME
+ENV SERVICE_NAME=${SERVICE_NAME}
 WORKDIR /usr/src/app
 
 # Copy only the production node_modules from the base stage
@@ -47,4 +52,4 @@ COPY --from=builder /usr/src/app/packages/common ./packages/common
 COPY --from=builder /usr/src/app/packages/database ./packages/database
 
 # Set the command to run the specified service
-CMD ["node", "./services/${SERVICE_NAME}/src/index.js"] 
+CMD ["sh", "-c", "node ./services/${SERVICE_NAME}/src/index.js"] 

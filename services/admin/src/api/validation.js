@@ -64,4 +64,10 @@ export const updateUserRoleSchema = {
   body: Joi.object({
     role: Joi.string().valid("CUSTOMER", "PARTNER", "ADMIN").required(),
   }),
+};
+
+export const userIdParamSchema = {
+  params: Joi.object({
+    userId: Joi.string().required(),
+  }),
 }; 

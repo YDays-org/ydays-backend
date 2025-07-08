@@ -1,4 +1,4 @@
-import prisma from "../../lib/prisma.js";
+import { prisma } from "@casablanca/common";
 
 export const getNotifications = async (req, res) => {
   const { id: userId } = req.user;

@@ -1,4 +1,4 @@
-import prisma from "../../lib/prisma";
+import prisma from "../lib/prisma.js";
 
 /**
  * Checks if a user's email is verified. MUST run AFTER authMiddleware.
