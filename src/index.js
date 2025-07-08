@@ -8,7 +8,7 @@ import helmet from "helmet";
 import apiServices from "./services/index.js";
 import prisma from "./lib/prisma.js";
 import { initializeSocket } from "./config/socket.js";
-import { arcjetMiddleware } from "./common/middlewares/arcjet.js";
+// import { arcjetMiddleware } from "./common/middlewares/arcjet.js";
 
 const app = express();
 
@@ -27,7 +27,7 @@ app.use(
 app.use(express.json({ limit: "50mb" }));
 app.use(express.urlencoded({ extended: true, limit: "50mb" }));
 app.use(cookieParser());
-app.use(arcjetMiddleware);
+// app.use(arcjetMiddleware);
 
 app.use("/api", apiServices);
 
