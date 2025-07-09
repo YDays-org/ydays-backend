@@ -8,6 +8,7 @@ nginx/
 
 # Ignore node_modules, as they are installed during the build
 node_modules
+.turbo
 
 # Ignore logs and local environment files
 logs

@@ -5,7 +5,7 @@
   "type": "module",
   "main": "prisma/client/index.js",
   "scripts": {
-    "prisma:generate": "prisma generate --schema=./prisma/schema.prisma"
+    "build": "prisma generate --schema=./prisma/schema.prisma"
   },
   "dependencies": {
     "@prisma/client": "^6.10.1",

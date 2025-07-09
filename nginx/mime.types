@@ -1,0 +1,33 @@
+types {
+    # Essential web types
+    text/html                             html htm;
+    text/css                              css;
+    application/json                      json;
+    application/javascript                js;
+    text/plain                            txt;
+    
+    # Images (for UI, logos, uploaded photos)
+    image/jpeg                            jpeg jpg;
+    image/png                             png;
+    image/gif                             gif;
+    image/svg+xml                         svg;
+    image/webp                            webp;
+    image/x-icon                          ico;
+    
+    # Fonts (for web fonts)
+    font/woff                             woff;
+    font/woff2                            woff2;
+    font/ttf                              ttf;
+    font/otf                              otf;
+    
+    # Documents (for confirmations, receipts, menus)
+    application/pdf                       pdf;
+    text/calendar                         ics;
+    text/csv                              csv;
+    
+    # Web app manifest
+    application/manifest+json             webmanifest;
+    
+    # Default fallback
+    application/octet-stream              *;
+}

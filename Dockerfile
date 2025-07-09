@@ -1,55 +1,57 @@
-# ARG that defines which service to build
+# ARG that defines which service to build. This will be passed from docker-compose.
 ARG SERVICE_NAME
+ARG PACKAGE_NAME
 
-# 1. Base stage for installing all dependencies
+# ---- Base Image ----
+# Use a specific version of Node for reproducibility.
 FROM node:24-alpine AS base
-WORKDIR /usr/src/app
+WORKDIR /app
 
-# Install dependencies needed for native modules
-RUN apk add --no-cache libc6-compat python3 make g++
+# ---- Builder ----
+# This stage prunes the monorepo to only include the files needed for the target service.
+FROM base AS builder
+ARG PACKAGE_NAME
+# Install turbo globally to use the prune command. This is a cleaner approach.
+RUN npm install -g turbo
+# Copy the rest of the source code.
+COPY . .
+# Run prune. This creates a pruned monorepo in the 'out' directory.
+RUN turbo prune ${PACKAGE_NAME} --docker
 
-# Copy all package.json files to leverage Docker cache
-COPY package.json ./
-COPY packages/common/package.json ./packages/common/
-COPY packages/database/package.json ./packages/database/
-COPY services/admin/package.json ./services/admin/
-COPY services/auth/package.json ./services/auth/
-COPY services/booking/package.json ./services/booking/
-COPY services/catalog/package.json ./services/catalog/
-COPY services/media/package.json ./services/media/
-COPY services/notifications/package.json ./services/notifications/
-COPY services/partner/package.json ./services/partner/
-COPY services/reviews/package.json ./services/reviews/
+# ---- Installer ----
+# This stage installs dependencies and builds the pruned code.
+FROM base AS installer
+WORKDIR /app
 
-# Copy the Prisma schema to allow client generation
-COPY packages/database/prisma ./packages/database/prisma
-
-# Install all monorepo dependencies (this will also run `prisma generate`)
+# Copy the pruned dependency definitions.
+COPY --from=builder /app/out/json/ .
+# Install ALL dependencies (including devDependencies) to run build scripts (like prisma generate).
 RUN npm install
 
-# 2. Builder stage to copy source code
-FROM base AS builder
-WORKDIR /usr/src/app
-COPY . .
+# Copy the pruned source code.
+COPY --from=builder /app/out/full/ .
+# Run the build command defined in the root package.json.
+# This will trigger `prisma generate` for the database package.
+RUN npm run build
 
-# 3. Final, pruned production stage
+# Remove development dependencies for a smaller final image.
+RUN npm prune --production
+
+# ---- Final Image ----
+# This is the final, lean image that will be deployed.
 FROM node:24-alpine AS final
 ARG SERVICE_NAME
 ENV SERVICE_NAME=${SERVICE_NAME}
-WORKDIR /usr/src/app
+WORKDIR /app
 
-# Copy only the production node_modules from the base stage
-COPY --from=base /usr/src/app/node_modules ./node_modules
+# Copy production node_modules from the installer stage.
+COPY --from=installer /app/node_modules ./node_modules
+# Copy the built 'packages' workspace.
+COPY --from=installer /app/packages/ ./packages/
+# Copy the specific service's code.
+COPY --from=installer /app/services/${SERVICE_NAME}/ ./services/${SERVICE_NAME}/
 
-# Copy the generated Prisma client
-COPY --from=builder /usr/src/app/packages/database/prisma ./packages/database/prisma
-
-# Copy the source code for the specific service we're building
-COPY --from=builder /usr/src/app/services/${SERVICE_NAME} ./services/${SERVICE_NAME}
-
-# Copy the source for the shared packages
-COPY --from=builder /usr/src/app/packages/common ./packages/common
-COPY --from=builder /usr/src/app/packages/database ./packages/database
-
-# Set the command to run the specified service
-CMD ["sh", "-c", "node ./services/${SERVICE_NAME}/src/index.js"] 
+# Set the command to run the specified service.
+# Use sh -c to allow environment variable expansion. 'exec' replaces the shell
+# process with the node process, making it PID 1.
+CMD ["/bin/sh", "-c", "exec node services/${SERVICE_NAME}/src/index.js"] 
