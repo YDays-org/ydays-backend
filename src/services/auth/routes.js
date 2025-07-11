@@ -8,6 +8,7 @@ const router = Router();
 
 // --- Public Routes ---
 router.post("/sign-up", validationMiddleware(authSchemas.signUpSchema), authHandlers.signUp);
+router.post("/sync-user", authHandlers.syncFirebaseUser);
 router.post("/reset-password", validationMiddleware(authSchemas.requestPasswordResetSchema), authHandlers.requestPasswordReset);
 
 // --- Protected Routes ---

@@ -1,9 +1,11 @@
 import prisma from "../../lib/prisma.js";
 import admin from "../../config/firebase.js";
 import { sendMail } from "../../lib/email.js";
+import { UserRole } from "@prisma/client";
 
 export const signUp = async (req, res) => {
   const { email, password, fullName, phoneNumber } = req.body;
+
   let userRecord = null; 
 
   try {
@@ -22,14 +24,14 @@ export const signUp = async (req, res) => {
       phoneNumber,
     });
 
-    await admin.auth().setCustomUserClaims(userRecord.uid, { role: "CUSTOMER" });
+    await admin.auth().setCustomUserClaims(userRecord.uid, { role: UserRole.CUSTOMER });
 
     const newUser = await prisma.user.create({
       data: {
         id: userRecord.uid,
         email,
         fullName,
-        role: "CUSTOMER",
+        role: UserRole.customer,
         phoneNumber,
         emailVerified: false, // Set initial state
         phoneVerified: false,
@@ -250,5 +252,96 @@ export const deleteAccount = async (req, res) => {
     console.error(`Error during account deletion for user ${id}:`, error);
     console.error(`Please check if user ${id} was deleted from the database but not from Firebase.`);
     res.status(500).json({ success: false, error: "Failed to completely delete account." });
+  }
+};
+
+export const syncFirebaseUser = async (req, res) => {
+  try {
+    // Verify the Firebase token from the request
+    const authHeader = req.headers.authorization;
+    if (!authHeader || !authHeader.startsWith("Bearer ")) {
+      return res.status(401).json({ success: false, error: "No valid token provided" });
+    }
+
+    const idToken = authHeader.split(" ")[1];
+    let decodedToken;
+
+    try {
+      decodedToken = await admin.auth().verifyIdToken(idToken);
+    } catch (error) {
+      return res.status(401).json({ success: false, error: "Invalid Firebase token" });
+    }
+
+    const { uid, email, name, picture, email_verified, phone_number } = decodedToken;
+
+    // Check if user already exists in database
+    const existingUser = await prisma.user.findUnique({
+      where: { id: uid },
+      include: { partner: true }
+    });
+
+    let user;
+
+    if (existingUser) {
+      // Update existing user with latest Firebase data
+      user = await prisma.user.update({
+        where: { id: uid },
+        data: {
+          email: email,
+          fullName: name || existingUser.fullName,
+          emailVerified: email_verified || false,
+          phoneNumber: phone_number || existingUser.phoneNumber,
+          phoneVerified: phone_number ? true : existingUser.phoneVerified,
+          profilePictureUrl: picture || existingUser.profilePictureUrl,
+        },
+        include: { partner: true }
+      });
+    } else {
+      // Create new user from Firebase data
+      user = await prisma.user.create({
+        data: {
+          id: uid,
+          email: email,
+          fullName: name || email.split('@')[0], // fallback to email prefix
+          role: UserRole.customer, // default role
+          emailVerified: email_verified || false,
+          phoneNumber: phone_number || null,
+          phoneVerified: phone_number ? true : false,
+          profilePictureUrl: picture || null,
+        },
+        include: { partner: true }
+      });
+
+      // Send welcome email for new users (optional)
+      if (email) {
+        try {
+          await sendMail({
+            to: email,
+            subject: "Welcome to Casablanca Découvertes!",
+            html: `
+              <h1>Welcome to Casablanca Découvertes!</h1>
+              <p>Thank you for joining our platform. Start discovering amazing activities, events, and restaurants in Casablanca!</p>
+              <p>Explore our platform and book your next adventure.</p>
+            `,
+          });
+        } catch (emailError) {
+          console.warn("Could not send welcome email:", emailError);
+        }
+      }
+    }
+
+    res.status(200).json({
+      success: true,
+      message: existingUser ? "User data synchronized successfully" : "User created and synchronized successfully",
+      user: user
+    });
+
+  } catch (error) {
+    console.error("Error syncing Firebase user to database:", error);
+    res.status(500).json({ 
+      success: false, 
+      error: "Failed to sync user data",
+      details: error.message 
+    });
   }
 };

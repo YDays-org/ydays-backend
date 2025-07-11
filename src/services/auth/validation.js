@@ -22,8 +22,8 @@ export const updateProfileSchema = {
     phoneNumber: CustomJoi.string().phoneNumber({
       defaultCountry: "MA",
       format: 'e164',
-      strict: true,
-    }),
+      strict: false,
+    }).allow(null, ''),
     profilePictureUrl: Joi.string().uri().allow(null, ''),
     // For partners
     companyName: Joi.string(),
