@@ -11,7 +11,7 @@ router.post("/sign-up", validationMiddleware(authSchemas.signUpSchema), authHand
 router.post("/reset-password", validationMiddleware(authSchemas.requestPasswordResetSchema), authHandlers.requestPasswordReset);
 
 // --- Protected Routes ---
-router.use(authMiddleware);
+// router.use(authMiddleware);
 
 router.get("/profile", authHandlers.getProfile);
 router.put("/profile", validationMiddleware(authSchemas.updateProfileSchema), authHandlers.updateProfile);

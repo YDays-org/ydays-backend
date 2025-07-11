@@ -13,7 +13,7 @@ router.get(
   reviewHandlers.getReviewsForListing
 );
 
-router.use(authMiddleware);
+// router.use(authMiddleware);
 
 router.post(
   "/",

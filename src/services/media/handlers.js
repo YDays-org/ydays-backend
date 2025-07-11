@@ -5,7 +5,7 @@ import { getMediaType, cleanupTempFile, deleteFromCloudinary, uploadFileToCloudi
 export const uploadSingleMedia = async (req, res) => {
   const { listingId, caption, isCover } = req.body;
   const file = req.file;
-  const partnerId = req.user.partner?.id;
+  const partnerId = req.user.id;
   let uploadedAssetPublicId = null;
 
   if (!file) {
@@ -53,11 +53,10 @@ export const uploadSingleMedia = async (req, res) => {
   }
 };
 
-
 export const uploadMultipleMedia = async (req, res) => {
   const { listingId, captions } = req.body;
   const files = req.files;
-  const partnerId = req.user.partner?.id;
+  const partnerId = req.user?.id;
   const uploadedAssets = []; // Store { public_id, path } for rollback and cleanup
 
   if (!files || files.length === 0) {

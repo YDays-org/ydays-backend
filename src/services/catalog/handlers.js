@@ -284,8 +284,8 @@ export const getTrendingListings = async (req, res) => {
 
 // PARTNER-PROTECTED HANDLERS
 export const createListing = async (req, res) => {
-  const { amenityIds, location, ...listingData } = req.body;
-  const partnerId = req.user.partner?.id;
+  const { amenityIds, location, ...requestData } = req.body;
+  const partnerId = req.user?.id;
 
   if (!partnerId) {
     return res.status(403).json({ success: false, message: "User is not a partner." });
@@ -293,10 +293,27 @@ export const createListing = async (req, res) => {
 
   try {
     const newListing = await prisma.$transaction(async (tx) => {
+      // Create the listing with explicit field mapping
       const listing = await tx.listing.create({
         data: {
-          ...listingData,
-          partner: { connect: { id: partnerId } },
+          title: requestData.title,
+          description: requestData.description,
+          type: requestData.type,
+          address: requestData.address,
+          phoneNumber: requestData.phoneNumber,
+          website: requestData.website,
+          openingHours: requestData.openingHours,
+          workingDays: requestData.workingDays,
+          categoryId: requestData.categoryId,
+          cancellationPolicy: requestData.cancellationPolicy,
+          accessibilityInfo: requestData.accessibilityInfo,
+          status: requestData.status,
+          metadata: requestData.metadata,
+          partner: {
+            connect: {
+              id: partnerId
+            }
+          },
           amenities: amenityIds
             ? {
               create: amenityIds.map((id) => ({
@@ -307,6 +324,7 @@ export const createListing = async (req, res) => {
         },
       });
 
+      // Handle location separately with raw SQL
       if (location?.lat && location?.lon) {
         await tx.$executeRaw`
           UPDATE listings
@@ -332,7 +350,7 @@ export const createListing = async (req, res) => {
 export const updateListing = async (req, res) => {
   const { id } = req.params;
   const { amenityIds, location, ...updateData } = req.body;
-  const partnerId = req.user.partner?.id;
+  const partnerId = req.user?.id;
 
   try {
     const existingListing = await prisma.listing.findUnique({ where: { id } });
@@ -386,7 +404,7 @@ export const updateListing = async (req, res) => {
 
 export const deleteListing = async (req, res) => {
   const { id } = req.params;
-  const partnerId = req.user.partner?.id;
+  const partnerId = req.user?.id;
 
   try {
     const existingListing = await prisma.listing.findUnique({ where: { id } });

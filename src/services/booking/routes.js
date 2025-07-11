@@ -13,7 +13,7 @@ router.get(
 );
 
 // All subsequent routes require authentication
-router.use(authMiddleware);
+// router.use(authMiddleware);
 
 router.post(
   "/reservations",

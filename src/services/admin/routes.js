@@ -8,7 +8,7 @@ import { authMiddleware } from "../../common/middlewares/auth.js";
 const router = Router();
 
 // Protect all routes in this service with authentication and role check
-router.use(authMiddleware);
+// router.use(authMiddleware);
 router.use(roleCheck(["ADMIN"]));
 
 // --- Category Routes ---

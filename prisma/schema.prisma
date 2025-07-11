@@ -142,7 +142,7 @@ model Listing {
   title              String
   description        String?
   address            String
-  location           Unsupported("geography(Point, 4326)")
+  location           Unsupported("geography(Point, 4326)")?
   phoneNumber        String?             @map("phone_number")
   website            String?             @map("website_url")
   openingHours       Json?               @map("opening_hours")

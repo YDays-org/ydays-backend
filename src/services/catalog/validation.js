@@ -72,6 +72,7 @@ export const createListingSchema = {
     description: Joi.string().required(),
     type: Joi.string().valid("ACTIVITY", "EVENT", "RESTAURANT").required(),
     address: Joi.string().required(),
+    status: Joi.string().valid("PUBLISHED", "DRAFT", "ARCHIVED").default("DRAFT"),
     location: Joi.object({
       lat: Joi.number().required(),
       lon: Joi.number().required(),

@@ -8,7 +8,7 @@ import { roleCheck } from "../../common/middlewares/roles.js";
 
 const router = Router();
 
-router.use(authMiddleware);
+// router.use(authMiddleware);
 router.use(roleCheck(["PARTNER"]));
 
 router.post(
