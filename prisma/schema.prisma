@@ -65,7 +65,6 @@ enum NotificationType {
   NEW_BOOKING_REQUEST
   USER_CANCELLED_BOOKING
   BOOKING_PAID
-  
   BOOKING_APPROVED_FOR_PAYMENT
   BOOKING_CONFIRMED
   BOOKING_CANCELLED_BY_PARTNER
@@ -75,7 +74,7 @@ enum NotificationType {
 
 // MODELS
 model User {
-  id                String         @id @map("firebase_uid")
+  id                String         @id
   email             String         @unique
   emailVerified     Boolean        @default(false) @map("email_verified")
   fullName          String?        @map("full_name")
@@ -143,7 +142,7 @@ model Listing {
   title              String
   description        String?
   address            String
-  location           Unsupported("geography(Point, 4326)")
+  location           Unsupported("geography(Point, 4326)")?
   phoneNumber        String?             @map("phone_number")
   website            String?             @map("website_url")
   openingHours       Json?               @map("opening_hours")

@@ -1,0 +1,1391 @@
+{
+  "info": {
+    "_postman_id": "a8c1b3f0-1c8a-4b2e-8a0b-1e8b3e8c1a0c",
+    "name": "Casablanca Discovery Platform API (Comprehensive)",
+    "description": {
+      "content": "## ⚠️ Important Setup Instructions\n\nThis Postman collection is designed to test the Casablanca Discovery Platform's microservices. To use it effectively, please follow these setup steps:\n\n### 1. Running the Environment\n\nMake sure your entire application stack is running using Docker:\n\n```bash\ndocker-compose up --build\n```\n\n### 2. Postman Environment Variables\n\nCreate a new environment in Postman and add the following variables. The collection will automatically populate most of them (`..._userId`, `categoryId`, `listingId`, etc.) as you run the requests in order.\n\n- `baseUrl`: `http://localhost:8080`\n- `customer_email`: (Set this to the email you use in the \"Sign up Customer\" request)\n- `customer_password`: (Set this to the password you use)\n- `partner_email`: (Set this to the email for the partner user)\n- `partner_password`: (Set this to the partner's password)\n- `admin_email`: (Set this to the email for the admin user)\n- `admin_password`: (Set this to the admin's password)\n- `customer_token`: (Will be set manually)\n- `partner_token`: (Will be set manually)\n- `admin_token`: (Will be set manually)\n- `customer_userId`: (Will be set by test script)\n- `partner_userId`: (Will be set by test script)\n- `admin_userId`: (Will be set by test script)\n- `categoryId`: (Will be set by test script)\n- `amenityId`: (Will be set by test script)\n- `listingId`: (Will be set by test script)\n- `scheduleId`: (Will be set by test script)\n- `bookingId`: (Will be set by test script)\n- `reviewId`: (Will be set by test script)\n- `promotionId`: (Will be set by test script)\n- `notificationId`: (Will be set by test script)\n\n### 3. Getting Firebase ID Tokens (Manual Step)\n\nThe authentication is handled by Firebase, which generates ID tokens on the client-side. This collection **cannot** log in for you. You must acquire these tokens manually for your three users.\n\n**How to get a token:**\n1. Use your frontend application to log in as each user (customer, partner-to-be, admin-to-be).\n2. Open your browser's developer tools, go to the Network tab, and find a request to your API.\n3. In the request headers, find the `Authorization` header. It will look like `Bearer eyJhbGciOi...`.\n4. Copy the token part (everything after \"Bearer \").\n5. Paste these tokens into the `customer_token`, `partner_token`, and `admin_token` variables in your Postman environment.\n\n*Note: These tokens expire after 1 hour. You will need to get new ones if you test for longer.*\n\n### 4. Bootstrapping the Admin User (Manual Step)\n\nTo manage roles, you need an initial user with the `ADMIN` role. You must set this manually in your database.\n\n1. After running the \"Sign up user to be Admin\" request, get the `userId` from the response body.\n2. Connect to your PostgreSQL database.\n3. Run the following SQL command:\n\n```sql\nUPDATE users SET role = 'ADMIN' WHERE id = 'YOUR_ADMIN_USER_ID_FROM_STEP_1';\n```\n\nOnce these steps are complete, you can run the requests in the collection **in the order they are numbered**.",
+      "type": "text/markdown"
+    },
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "[HAPPY PATH] Full E2E Test Flow",
+      "description": "This folder contains a full, ordered, end-to-end test case that simulates a common user journey. Run these requests in order. The other folders in this collection are for testing individual, granular endpoints.",
+      "item": [
+        {
+          "name": "1. Setup & Auth",
+          "item": [
+            {
+              "name": "1.1. Sign up Customer",
+              "request": {
+                "method": "POST",
+                "header": [],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n    \"email\": \"{{customer_email}}\",\n    \"password\": \"{{customer_password}}\",\n    \"fullName\": \"Test Customer\",\n    \"phoneNumber\": \"+212612345678\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                },
+                "url": {
+                  "raw": "{{baseUrl}}/api/auth/sign-up",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["api", "auth", "sign-up"]
+                },
+                "description": "Creates a standard customer account. The `userId` is automatically saved to the `customer_userId` environment variable."
+              },
+              "response": []
+            },
+            {
+              "name": "1.2. Sign up user to be Partner",
+              "request": {
+                "method": "POST",
+                "header": [],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n    \"email\": \"{{partner_email}}\",\n    \"password\": \"{{partner_password}}\",\n    \"fullName\": \"Test Partner\",\n    \"phoneNumber\": \"+212687654321\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                },
+                "url": {
+                  "raw": "{{baseUrl}}/api/auth/sign-up",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["api", "auth", "sign-up"]
+                },
+                "description": "Creates a standard user account that we will later promote to a PARTNER. The `userId` is saved to the `partner_userId` environment variable."
+              },
+              "response": []
+            },
+            {
+              "name": "1.3. Sign up user to be Admin",
+              "request": {
+                "method": "POST",
+                "header": [],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n    \"email\": \"{{admin_email}}\",\n    \"password\": \"{{admin_password}}\",\n    \"fullName\": \"Test Admin\",\n    \"phoneNumber\": \"+212611223344\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                },
+                "url": {
+                  "raw": "{{baseUrl}}/api/auth/sign-up",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["api", "auth", "sign-up"]
+                },
+                "description": "Creates a standard user account that you will MANUALLY promote to ADMIN in the database. The `userId` is saved to the `admin_userId` environment variable."
+              },
+              "response": []
+            },
+            {
+              "name": "1.4. [MANUAL] Get Firebase ID Tokens",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "",
+                  "host": [""]
+                },
+                "description": "This is a placeholder. You must manually get the ID tokens for your 3 users and set the `customer_token`, `partner_token`, and `admin_token` environment variables. See the collection-level documentation for instructions."
+              },
+              "response": []
+            },
+            {
+              "name": "1.5. [MANUAL] Set Admin Role in DB",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "",
+                  "host": [""]
+                },
+                "description": "This is a placeholder. You must manually update the user from step #3 to have the 'ADMIN' role directly in the database. See the collection-level documentation for instructions."
+              },
+              "response": []
+            },
+            {
+              "name": "1.6. Set Partner Role",
+              "request": {
+                "auth": {
+                  "type": "bearer",
+                  "bearer": [
+                    {
+                      "key": "token",
+                      "value": "{{admin_token}}",
+                      "type": "string"
+                    }
+                  ]
+                },
+                "method": "PATCH",
+                "header": [],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n    \"role\": \"PARTNER\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                },
+                "url": {
+                  "raw": "{{baseUrl}}/api/admin/users/{{partner_userId}}/role",
+                  "host": ["{{baseUrl}}"],
+                  "path": [
+                    "api",
+                    "admin",
+                    "users",
+                    "{{partner_userId}}",
+                    "role"
+                  ]
+                },
+                "description": "Uses the ADMIN user's token to promote the user from step #2 to a PARTNER."
+              },
+              "response": []
+            },
+            {
+              "name": "1.7. Partner Updates Profile with Company Info",
+              "request": {
+                "auth": {
+                  "type": "bearer",
+                  "bearer": [
+                    {
+                      "key": "token",
+                      "value": "{{partner_token}}",
+                      "type": "string"
+                    }
+                  ]
+                },
+                "method": "PUT",
+                "header": [],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n    \"companyName\": \"Partner's Awesome Activities Inc.\",\n    \"companyAddress\": \"123 Main Street, Casablanca\",\n    \"websiteUrl\": \"https://example-partner.com\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                },
+                "url": {
+                  "raw": "{{baseUrl}}/api/auth/profile",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["api", "auth", "profile"]
+                },
+                "description": "After being promoted, the partner user must update their profile to create the associated `Partner` record in the database. This is a required step before they can create listings."
+              },
+              "response": []
+            }
+          ]
+        },
+        {
+          "name": "2. Admin Creates Categories & Amenities",
+          "item": [
+            {
+              "name": "2.1. Create Category",
+              "request": {
+                "auth": {
+                  "type": "bearer",
+                  "bearer": [
+                    {
+                      "key": "token",
+                      "value": "{{admin_token}}",
+                      "type": "string"
+                    }
+                  ]
+                },
+                "method": "POST",
+                "header": [],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n    \"name\": \"Food & Drink\",\n    \"slug\": \"food-and-drink\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                },
+                "url": {
+                  "raw": "{{baseUrl}}/api/admin/categories",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["api", "admin", "categories"]
+                },
+                "description": "Creates a new category for listings. Saves the `categoryId`."
+              },
+              "response": []
+            },
+            {
+              "name": "2.2. Create Amenity",
+              "request": {
+                "auth": {
+                  "type": "bearer",
+                  "bearer": [
+                    {
+                      "key": "token",
+                      "value": "{{admin_token}}",
+                      "type": "string"
+                    }
+                  ]
+                },
+                "method": "POST",
+                "header": [],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n    \"name\": \"Free WiFi\",\n    \"iconUrl\": \"https://example.com/wifi.png\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                },
+                "url": {
+                  "raw": "{{baseUrl}}/api/admin/amenities",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["api", "admin", "amenities"]
+                },
+                "description": "Creates a new amenity that can be attached to listings. Saves the `amenityId`."
+              },
+              "response": []
+            }
+          ]
+        },
+        {
+          "name": "3. Partner Creates Listing & Schedule",
+          "item": [
+            {
+              "name": "3.1. Create Listing",
+              "request": {
+                "auth": {
+                  "type": "bearer",
+                  "bearer": [
+                    {
+                      "key": "token",
+                      "value": "{{partner_token}}",
+                      "type": "string"
+                    }
+                  ]
+                },
+                "method": "POST",
+                "header": [],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n    \"title\": \"Delicious Tagine Cooking Class\",\n    \"description\": \"Learn to cook a traditional Moroccan tagine with a local chef.\",\n    \"type\": \"ACTIVITY\",\n    \"address\": \"456 Medina Quarter, Casablanca\",\n    \"location\": {\n        \"lat\": 33.5951,\n        \"lon\": -7.6186\n    },\n    \"phoneNumber\": \"+212522000000\",\n    \"categoryId\": {{categoryId}},\n    \"amenityIds\": [{{amenityId}}],\n    \"status\": \"PUBLISHED\",\n    \"metadata\": {\n        \"duration\": \"3 hours\",\n        \"price\": 350,\n        \"inclusions\": [\"Ingredients\", \"Mint tea\", \"Recipe card\"],\n        \"nonInclus\": [\"Transportation\"],\n        \"programme\": [\n            {\n                \"heure\": \"10:00 AM\",\n                \"activite\": \"Market visit\"\n            },\n            {\n                \"heure\": \"11:00 AM\",\n                \"activite\": \"Cooking session\"\n            }\n        ]\n    }\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                },
+                "url": {
+                  "raw": "{{baseUrl}}/api/catalog/listings",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["api", "catalog", "listings"]
+                },
+                "description": "Creates a new ACTIVITY listing using the `partner_token`. Saves the `listingId`."
+              },
+              "response": []
+            },
+            {
+              "name": "3.2. Create Schedule for Listing",
+              "request": {
+                "auth": {
+                  "type": "bearer",
+                  "bearer": [
+                    {
+                      "key": "token",
+                      "value": "{{partner_token}}",
+                      "type": "string"
+                    }
+                  ]
+                },
+                "method": "POST",
+                "header": [],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n    \"startTime\": \"2025-08-15T10:00:00.000Z\",\n    \"endTime\": \"2025-08-15T13:00:00.000Z\",\n    \"price\": 350.00,\n    \"capacity\": 10\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                },
+                "url": {
+                  "raw": "{{baseUrl}}/api/partner/listings/{{listingId}}/schedules",
+                  "host": ["{{baseUrl}}"],
+                  "path": [
+                    "api",
+                    "partner",
+                    "listings",
+                    "{{listingId}}",
+                    "schedules"
+                  ]
+                },
+                "description": "Adds a pricing schedule to the listing we just created. Saves the `scheduleId`."
+              },
+              "response": []
+            }
+          ]
+        },
+        {
+          "name": "4. Customer Books and Pays",
+          "item": [
+            {
+              "name": "4.1. [CUSTOMER] Create Reservation Request",
+              "request": {
+                "auth": {
+                  "type": "bearer",
+                  "bearer": [
+                    {
+                      "key": "token",
+                      "value": "{{customer_token}}",
+                      "type": "string"
+                    }
+                  ]
+                },
+                "method": "POST",
+                "header": [],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n    \"scheduleId\": \"{{scheduleId}}\",\n    \"numParticipants\": 2\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                },
+                "url": {
+                  "raw": "{{baseUrl}}/api/booking/reservations",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["api", "booking", "reservations"]
+                },
+                "description": "The customer requests to book a slot. This will set the booking status to `PENDING` and notify the partner. Saves the `bookingId`."
+              },
+              "response": []
+            },
+            {
+              "name": "4.2. [PARTNER] Approve Reservation",
+              "request": {
+                "auth": {
+                  "type": "bearer",
+                  "bearer": [
+                    {
+                      "key": "token",
+                      "value": "{{partner_token}}",
+                      "type": "string"
+                    }
+                  ]
+                },
+                "method": "PATCH",
+                "header": [],
+                "url": {
+                  "raw": "{{baseUrl}}/api/partner/bookings/{{bookingId}}/approve",
+                  "host": ["{{baseUrl}}"],
+                  "path": [
+                    "api",
+                    "partner",
+                    "bookings",
+                    "{{bookingId}}",
+                    "approve"
+                  ]
+                },
+                "description": "The partner approves the customer's request. This moves the status to `AWAITING_PAYMENT` and notifies the customer."
+              },
+              "response": []
+            },
+            {
+              "name": "4.3. [CUSTOMER] Pay for Reservation",
+              "request": {
+                "auth": {
+                  "type": "bearer",
+                  "bearer": [
+                    {
+                      "key": "token",
+                      "value": "{{customer_token}}",
+                      "type": "string"
+                    }
+                  ]
+                },
+                "method": "POST",
+                "header": [],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n    \"cardNumber\": \"4242424242424242\",\n    \"expiryMonth\": \"12\",\n    \"expiryYear\": \"2030\",\n    \"cvc\": \"123\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                },
+                "url": {
+                  "raw": "{{baseUrl}}/api/booking/reservations/{{bookingId}}/pay",
+                  "host": ["{{baseUrl}}"],
+                  "path": [
+                    "api",
+                    "booking",
+                    "reservations",
+                    "{{bookingId}}",
+                    "pay"
+                  ]
+                },
+                "description": "The customer submits their payment (mocked). This moves the booking status to `CONFIRMED`."
+              },
+              "response": []
+            }
+          ]
+        },
+        {
+          "name": "5. Customer Leaves Review",
+          "item": [
+            {
+              "name": "5.1. [CUSTOMER] Submit Review",
+              "request": {
+                "auth": {
+                  "type": "bearer",
+                  "bearer": [
+                    {
+                      "key": "token",
+                      "value": "{{customer_token}}",
+                      "type": "string"
+                    }
+                  ]
+                },
+                "method": "POST",
+                "header": [],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n    \"bookingId\": \"{{bookingId}}\",\n    \"rating\": 5,\n    \"comment\": \"This was an amazing experience! The chef was fantastic.\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                },
+                "url": {
+                  "raw": "{{baseUrl}}/api/reviews",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["api", "reviews"]
+                },
+                "description": "After the booking, the customer leaves a review. Saves the `reviewId`."
+              },
+              "response": []
+            },
+            {
+              "name": "5.2. [PARTNER] Reply to Review",
+              "request": {
+                "auth": {
+                  "type": "bearer",
+                  "bearer": [
+                    {
+                      "key": "token",
+                      "value": "{{partner_token}}",
+                      "type": "string"
+                    }
+                  ]
+                },
+                "method": "PUT",
+                "header": [],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n    \"reply\": \"Thank you so much for your kind words! We're glad you enjoyed it.\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                },
+                "url": {
+                  "raw": "{{baseUrl}}/api/reviews/{{reviewId}}/reply",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["api", "reviews", "{{reviewId}}", "reply"]
+                },
+                "description": "The partner responds to the customer's review."
+              },
+              "response": []
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Auth Service",
+      "item": [
+        {
+          "name": "Request Password Reset",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"email\": \"{{customer_email}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/auth/reset-password",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "auth", "reset-password"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Get My Profile",
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{customer_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/auth/profile",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "auth", "profile"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Change Password",
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{customer_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"newPassword\": \"aSecureNewPassword123\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/auth/change-password",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "auth", "change-password"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Delete My Account",
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{admin_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/auth/account",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "auth", "account"]
+            },
+            "description": "Deletes the currently authenticated user's account. Use with caution. The token here is for the admin user, so it will delete that one."
+          },
+          "response": []
+        },
+        {
+          "name": "Update My Profile (Customer)",
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{customer_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "PUT",
+            "header": [],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"fullName\": \"Customer Test Updated\",\n    \"profilePictureUrl\": \"https://example.com/new-pic.jpg\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/auth/profile",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "auth", "profile"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Send New Verification Email",
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{customer_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/auth/send-verification-email",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "auth", "send-verification-email"]
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Admin Service",
+      "item": [
+        {
+          "name": "List Users",
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{admin_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/admin/users",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "admin", "users"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Get User By ID",
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{admin_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/admin/users/{{customer_userId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "admin", "users", "{{customer_userId}}"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Update User Role",
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{admin_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "PATCH",
+            "header": [],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"role\": \"PARTNER\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/admin/users/{{partner_userId}}/role",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "admin", "users", "{{partner_userId}}", "role"]
+            },
+            "description": "Promotes a user to a new role. Note: This request in the individual testing folder uses the `partner_userId` from the happy path for convenience."
+          },
+          "response": []
+        },
+        {
+          "name": "Create Category",
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{admin_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"name\": \"Cultural Tours\",\n    \"slug\": \"cultural-tours\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/admin/categories",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "admin", "categories"]
+            },
+            "description": "Creates a new category for listings. Note: `categoryId` is not automatically saved in this context; it is saved in the main happy path flow."
+          },
+          "response": []
+        },
+        {
+          "name": "Update Category",
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{admin_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "PUT",
+            "header": [],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"name\": \"Food & Beverages\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/admin/categories/{{categoryId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "admin", "categories", "{{categoryId}}"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Update Amenity",
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{admin_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "PUT",
+            "header": [],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"name\": \"High-Speed WiFi\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/admin/amenities/{{amenityId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "admin", "amenities", "{{amenityId}}"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Create Amenity",
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{admin_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"name\": \"Parking\",\n    \"iconUrl\": \"https://example.com/parking.png\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/admin/amenities",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "admin", "amenities"]
+            },
+            "description": "Creates a new amenity. Note: `amenityId` is not automatically saved in this context; it is saved in the main happy path flow."
+          },
+          "response": []
+        },
+        {
+          "name": "Delete Amenity",
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{admin_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/admin/amenities/{{amenityId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "admin", "amenities", "{{amenityId}}"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Delete Category",
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{admin_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/admin/categories/{{categoryId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "admin", "categories", "{{categoryId}}"]
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Catalog Service",
+      "item": [
+        {
+          "name": "[PUBLIC] Get All Listings",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/catalog/listings?category=food-and-drink",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "catalog", "listings"],
+              "query": [
+                {
+                  "key": "category",
+                  "value": "food-and-drink"
+                }
+              ]
+            },
+            "description": "Searches for listings. We filter by the category we created to verify our new listing appears."
+          },
+          "response": []
+        },
+        {
+          "name": "[PUBLIC] Get Specific Listing",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/catalog/listings/{{listingId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "catalog", "listings", "{{listingId}}"]
+            },
+            "description": "Retrieves the full details for the listing we created."
+          },
+          "response": []
+        },
+        {
+          "name": "[PUBLIC] Get All Categories",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/catalog/categories",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "catalog", "categories"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "[PUBLIC] Get All Amenities",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/catalog/amenities",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "catalog", "amenities"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "[PUBLIC] Get New Listings",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/catalog/listings/new",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "catalog", "listings", "new"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "[PUBLIC] Get Trending Listings",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/catalog/listings/trending",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "catalog", "listings", "trending"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "[CUSTOMER] Get Personalized Feed",
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{customer_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/catalog/feed",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "catalog", "feed"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "[CUSTOMER] Add Listing to Favorites",
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{customer_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/catalog/favorites/{{listingId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "catalog", "favorites", "{{listingId}}"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "[CUSTOMER] Remove Listing from Favorites",
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{customer_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/catalog/favorites/{{listingId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "catalog", "favorites", "{{listingId}}"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "[PARTNER] Update Listing",
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{partner_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "PUT",
+            "header": [],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"title\": \"(Updated) Delicious Tagine Cooking Class\",\n    \"status\": \"DRAFT\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/catalog/listings/{{listingId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "catalog", "listings", "{{listingId}}"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "[PARTNER] Delete Listing",
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{partner_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/catalog/listings/{{listingId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "catalog", "listings", "{{listingId}}"]
+            },
+            "description": "Deletes the listing created in the happy path. Run this last."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Media Service",
+      "item": [
+        {
+          "name": "[PARTNER] Upload Single Image",
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{partner_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "media",
+                  "type": "file",
+                  "src": []
+                },
+                {
+                  "key": "listingId",
+                  "value": "{{listingId}}",
+                  "type": "text"
+                },
+                {
+                  "key": "isCover",
+                  "value": "true",
+                  "type": "text"
+                }
+              ]
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/media/upload/single",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "media", "upload", "single"]
+            },
+            "description": "Uploads a single image for the listing. This is a `multipart/form-data` request. You must select a file for the `media` key."
+          },
+          "response": []
+        },
+        {
+          "name": "[PARTNER] Upload Multiple Images",
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{partner_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "media",
+                  "type": "file",
+                  "src": []
+                },
+                {
+                  "key": "media",
+                  "type": "file",
+                  "src": []
+                },
+                {
+                  "key": "listingId",
+                  "value": "{{listingId}}",
+                  "type": "text"
+                }
+              ]
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/media/upload/multiple",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "media", "upload", "multiple"]
+            },
+            "description": "Uploads multiple files. You must select multiple files for the `media` key."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Notifications Service",
+      "item": [
+        {
+          "name": "Get My Notifications",
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{customer_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/notifications/",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "notifications", ""]
+            },
+            "description": "Fetches all notifications for the authenticated user (customer in this case). It saves the first unread notification's ID to `notificationId`."
+          },
+          "response": []
+        },
+        {
+          "name": "Mark Notification as Read",
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{customer_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "PATCH",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/notifications/{{notificationId}}/read",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "notifications", "{{notificationId}}", "read"]
+            },
+            "description": "Marks the notification fetched in the previous step as read."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Reviews Service",
+      "item": [
+        {
+          "name": "[PUBLIC] Get Reviews for Listing",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/reviews?listingId={{listingId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "reviews"],
+              "query": [
+                {
+                  "key": "listingId",
+                  "value": "{{listingId}}"
+                }
+              ]
+            },
+            "description": "Check that the review and the partner's reply are visible publicly."
+          },
+          "response": []
+        },
+        {
+          "name": "[CUSTOMER] Submit Review",
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{customer_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"bookingId\": \"{{bookingId}}\",\n    \"rating\": 5,\n    \"comment\": \"This was an amazing experience! The chef was fantastic.\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/reviews",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "reviews"]
+            },
+            "description": "Submits a review for a completed booking. This requires a valid `bookingId` for a booking made by the authenticated user that has been `CONFIRMED` or `COMPLETED`. The `reviewId` is saved for the reply request."
+          },
+          "response": []
+        },
+        {
+          "name": "[PARTNER] Reply to Review",
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{partner_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "PUT",
+            "header": [],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"reply\": \"Thank you so much for your kind words! We're glad you enjoyed it.\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/reviews/{{reviewId}}/reply",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "reviews", "{{reviewId}}", "reply"]
+            },
+            "description": "Allows a partner to respond to a customer's review."
+          },
+          "response": []
+        }
+      ]
+    }
+  ]
+}
