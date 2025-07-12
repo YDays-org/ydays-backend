@@ -213,7 +213,7 @@ export const getPartnerDashboardStats = async (req, res) => {
         _sum: { totalPrice: true },
         where: {
           listing: { partnerId },
-          status: 'COMPLETED',
+          status: 'completed',
           ...(hasDateFilter && { createdAt: dateFilter }),
         },
       }),
@@ -250,9 +250,9 @@ export const getPartnerDashboardStats = async (req, res) => {
       totalListings,
       bookings: {
         total: bookingsByStatus.reduce((acc, curr) => acc + curr._count.id, 0),
-        confirmed: bookingsByStatus.find(b => b.status === 'CONFIRMED')?._count.id || 0,
-        completed: bookingsByStatus.find(b => b.status === 'COMPLETED')?._count.id || 0,
-        cancelled: bookingsByStatus.find(b => b.status === 'CANCELLED')?._count.id || 0,
+        confirmed: bookingsByStatus.find(b => b.status === 'confirmed')?._count.id || 0,
+        completed: bookingsByStatus.find(b => b.status === 'completed')?._count.id || 0,
+        cancelled: bookingsByStatus.find(b => b.status === 'cancelled')?._count.id || 0,
       },
       reviews: {
         total: totalReviews,
@@ -282,7 +282,7 @@ export const cancelReservationByPartner = async (req, res) => {
       if (booking.listing.partnerId !== partnerId) {
         throw new Error("You do not have permission to cancel this booking.");
       }
-      if (booking.status === "CANCELLED" || booking.status === "COMPLETED") {
+      if (booking.status === "cancelled" || booking.status === "completed") {
         throw new Error(`Booking cannot be cancelled as it is already ${booking.status}.`);
       }
 
@@ -293,7 +293,7 @@ export const cancelReservationByPartner = async (req, res) => {
 
       await tx.booking.update({
         where: { id: bookingId },
-        data: { status: "CANCELLED" },
+        data: { status: "cancelled" },
       });
 
       await tx.notification.create({
@@ -349,13 +349,13 @@ export const approveReservationByPartner = async (req, res) => {
       if (bookingToApprove.listing.partnerId !== partnerId) {
         throw new Error("You do not have permission to approve this booking.");
       }
-      if (bookingToApprove.status !== 'PENDING') {
+      if (bookingToApprove.status !== 'pending') {
         throw new Error(`Only pending bookings can be approved. This booking is currently '${bookingToApprove.status}'.`);
       }
 
       const updatedBooking = await tx.booking.update({
         where: { id: bookingId },
-        data: { status: "AWAITING_PAYMENT" },
+        data: { status: "awaiting_payment" },
       });
 
       await tx.payment.create({
@@ -364,7 +364,7 @@ export const approveReservationByPartner = async (req, res) => {
           userId: bookingToApprove.userId,
           amount: updatedBooking.totalPrice,
           currency: "MAD", // Assuming MAD, adjust if dynamic
-          status: 'PENDING',
+          status: 'pending',
           paymentGateway: 'system', // Indicates internal system payment
           gatewayTransactionId: `mock_${updatedBooking.id}_${Date.now()}` // Mock ID
         }
@@ -373,7 +373,7 @@ export const approveReservationByPartner = async (req, res) => {
       await tx.notification.create({
         data: {
           userId: bookingToApprove.userId,
-          type: 'BOOKING_APPROVED_FOR_PAYMENT',
+          type: 'booking_approved_for_payment',
           title: `Action Required: Your booking for ${bookingToApprove.listing.title} is approved!`,
           message: `Your booking is approved and is now awaiting payment. Please complete the payment to confirm your spot.`,
           relatedBookingId: updatedBooking.id,
@@ -395,7 +395,7 @@ export const approveReservationByPartner = async (req, res) => {
     const receiverSocketId = userSocketMap[user.id];
     if (receiverSocketId) {
       io.to(receiverSocketId).emit("booking_approved_notification", {
-        type: 'BOOKING_APPROVED_FOR_PAYMENT',
+        type: 'booking_approved_for_payment',
         title: `Your booking for ${booking.listing.title} is approved!`,
         message: 'Please complete the payment to confirm your spot.',
         bookingId: booking.id,

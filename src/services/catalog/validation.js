@@ -44,7 +44,10 @@ const activityMetadataSchema = Joi.object({
 export const getListingsSchema = {
   query: Joi.object({
     q: Joi.string().trim().allow(""),
-    category: Joi.string().trim(),
+    category: Joi.alternatives().try(
+      Joi.string().trim(),
+      Joi.number().integer().positive()
+    ),
     lat: Joi.string().regex(LATITUDE_REGEX),
     lon: Joi.string().regex(LONGITUDE_REGEX),
     radius: Joi.number().integer().min(100).max(50000),
@@ -70,7 +73,7 @@ export const createListingSchema = {
     // General Fields
     title: Joi.string().required(),
     description: Joi.string().required(),
-    type: Joi.string().valid("ACTIVITY", "EVENT", "RESTAURANT").required(),
+    type: Joi.string().valid("activity", "event", "restaurant").required(),
     address: Joi.string().required(),
     location: Joi.object({
       lat: Joi.number().required(),
@@ -87,13 +90,13 @@ export const createListingSchema = {
 
     // Type-specific Metadata
     metadata: Joi.when('type', {
-      is: 'RESTAURANT',
+      is: 'restaurant',
       then: restaurantMetadataSchema.required(),
       otherwise: Joi.when('type', {
-        is: 'EVENT',
+        is: 'event',
         then: eventMetadataSchema.required(),
         otherwise: Joi.when('type', {
-          is: 'ACTIVITY',
+          is: 'activity',
           then: activityMetadataSchema.required(),
           otherwise: Joi.forbidden(),
         }),
@@ -110,7 +113,7 @@ export const updateListingSchema = {
     // General Fields
     title: Joi.string(),
     description: Joi.string(),
-    type: Joi.string().valid("ACTIVITY", "EVENT", "RESTAURANT"),
+    type: Joi.string().valid("activity", "event", "restaurant"),
     address: Joi.string(),
     location: Joi.object({
       lat: Joi.number().required(),
@@ -123,7 +126,7 @@ export const updateListingSchema = {
     categoryId: Joi.number().integer(),
     cancellationPolicy: Joi.string().allow(null, ''),
     accessibilityInfo: Joi.string().allow(null, ''),
-    status: Joi.string().valid("PUBLISHED", "DRAFT", "ARCHIVED"),
+    status: Joi.string().valid("published", "draft", "archived"),
     amenityIds: Joi.array().items(Joi.number().integer()),
 
     // Type-specific Metadata

@@ -31,7 +31,7 @@ export const signUp = async (req, res) => {
         id: userRecord.uid,
         email,
         fullName,
-        role: UserRole.customer,
+        role: UserRole.CUSTOMER,
         phoneNumber,
         emailVerified: false, // Set initial state
         phoneVerified: false,

@@ -17,34 +17,34 @@ datasource db {
 
 // ENUMS
 enum UserRole {
-  CUSTOMER
-  PARTNER
-  ADMIN
+  customer
+  partner
+  admin
 }
 
 enum ListingType {
-  ACTIVITY
-  EVENT
-  RESTAURANT
+  activity
+  event
+  restaurant
 }
 
 enum ListingStatus {
-  PUBLISHED
-  DRAFT
-  ARCHIVED
+  published
+  draft
+  archived
 }
 
 enum MediaType {
-  IMAGE
-  VIDEO
+  image
+  video
 }
 
 enum BookingStatus {
-  PENDING
-  CONFIRMED
-  CANCELLED
-  COMPLETED
-  AWAITING_PAYMENT
+  pending
+  confirmed
+  cancelled
+  completed
+  awaiting_payment
 }
 
 enum PromotionType {
@@ -54,23 +54,23 @@ enum PromotionType {
 }
 
 enum PaymentStatus {
-  PENDING
-  SUCCEEDED
-  FAILED
-  REFUNDED
-  PARTIALLY_REFUNDED
+  pending
+  succeeded
+  failed
+  refunded
+  partially_refunded
 }
 
 enum NotificationType {
-  NEW_BOOKING_REQUEST
-  USER_CANCELLED_BOOKING
-  BOOKING_PAID
+  new_booking_request
+  user_cancelled_booking
+  booking_paid
   
-  BOOKING_APPROVED_FOR_PAYMENT
-  BOOKING_CONFIRMED
-  BOOKING_CANCELLED_BY_PARTNER
-  BOOKING_MODIFIED
-  RESERVATION_REMINDER
+  booking_approved_for_payment
+  booking_confirmed
+  booking_cancelled_by_partner
+  booking_modified
+  reservation_reminder
 }
 
 // MODELS
@@ -79,7 +79,7 @@ model User {
   email             String         @unique
   emailVerified     Boolean        @default(false) @map("email_verified")
   fullName          String?        @map("full_name")
-  role              UserRole
+  role              UserRole       
   profilePictureUrl String?        @map("profile_picture_url")
   phoneNumber       String?        @map("phone_number")
   phoneVerified     Boolean        @default(false) @map("phone_verified")
@@ -151,7 +151,7 @@ model Listing {
   metadata           Json?
   cancellationPolicy String?             @map("cancellation_policy")
   accessibilityInfo  String?             @map("accessibility_info")
-  status             ListingStatus       @default(DRAFT)
+  status             ListingStatus       @default(draft)
   averageRating      Decimal?            @default(0) @db.Decimal(3, 2) @map("average_rating")
   reviewCount        Int?                @default(0) @map("review_count")
   createdAt          DateTime            @default(now()) @map("created_at")
@@ -227,7 +227,7 @@ model Booking {
   scheduleId      String         @map("schedule_id")
   numParticipants Int            @map("num_participants")
   totalPrice      Decimal        @db.Decimal(10, 2) @map("total_price")
-  status          BookingStatus  @default(PENDING)
+  status          BookingStatus  @default(pending)
   createdAt       DateTime       @default(now()) @map("created_at")
   updatedAt       DateTime       @updatedAt @map("updated_at")
   review          Review?
@@ -330,7 +330,7 @@ model Payment {
   userId               String        @map("user_id")
   amount               Decimal       @db.Decimal(10, 2)
   currency             String
-  status               PaymentStatus @default(PENDING)
+  status               PaymentStatus @default(pending)
   paymentGateway       String        @map("payment_gateway")
   gatewayTransactionId String        @unique @map("gateway_transaction_id")
   paymentMethodDetails Json?         @map("payment_method_details")

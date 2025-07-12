@@ -114,7 +114,7 @@ export const createReservation = async (req, res) => {
           scheduleId,
           numParticipants,
           totalPrice,
-          status: "PENDING", // Status is now pending partner approval
+          status: "pending", // Status is now pending partner approval
         },
       });
 
@@ -252,7 +252,7 @@ export const cancelReservation = async (req, res) => {
         throw new Error("Booking not found or you do not have permission to cancel it.");
       }
 
-      if (booking.status === "CANCELLED" || booking.status === "COMPLETED") {
+      if (booking.status === "cancelled" || booking.status === "completed") {
         throw new Error(`Booking cannot be cancelled as it is already ${booking.status}.`);
       }
 
@@ -269,7 +269,7 @@ export const cancelReservation = async (req, res) => {
       // Update the booking status
       const cancelledBooking = await tx.booking.update({
         where: { id },
-        data: { status: "CANCELLED" },
+        data: { status: "cancelled" },
       });
 
       return cancelledBooking;
@@ -315,7 +315,7 @@ export const updateReservation = async (req, res) => {
       if (currentBooking.userId !== userId) {
         throw new Error("You do not have permission to modify this booking.");
       }
-      if (currentBooking.status !== 'CONFIRMED') {
+      if (currentBooking.status !== 'confirmed') {
         throw new Error(`Cannot modify a booking with status '${currentBooking.status}'.`);
       }
 
@@ -379,27 +379,27 @@ export const submitPaymentForBooking = async (req, res) => {
 
       if (!bookingToPay) throw new Error("Booking not found.");
       if (bookingToPay.userId !== userId) throw new Error("You do not have permission to pay for this booking.");
-      if (bookingToPay.status !== 'AWAITING_PAYMENT') throw new Error(`Booking is not awaiting payment. Current status: '${bookingToPay.status}'.`);
+      if (bookingToPay.status !== 'awaiting_payment') throw new Error(`Booking is not awaiting payment. Current status: '${bookingToPay.status}'.`);
 
       // 2. "Process" the payment: Update payment and booking statuses
       await tx.payment.update({
         where: { bookingId: bookingId },
         data: {
-          status: 'SUCCEEDED',
+          status: 'succeeded',
           paymentMethodDetails: { cardType: "visa", last4: req.body.cardNumber.slice(-4) },
         },
       });
 
       const confirmedBooking = await tx.booking.update({
         where: { id: bookingId },
-        data: { status: 'CONFIRMED' },
+        data: { status: 'confirmed' },
       });
 
       // 3. Create notifications for both user and partner
       await tx.notification.create({
         data: {
           userId: bookingToPay.userId,
-          type: 'BOOKING_CONFIRMED',
+          type: 'booking_confirmed',
           title: `Booking Confirmed: ${bookingToPay.listing.title}`,
           message: `Your payment was successful! Your booking for ${bookingToPay.listing.title} is confirmed.`,
           relatedBookingId: confirmedBooking.id,
@@ -410,7 +410,7 @@ export const submitPaymentForBooking = async (req, res) => {
       await tx.notification.create({
         data: {
           userId: bookingToPay.listing.partner.userId,
-          type: 'BOOKING_PAID',
+          type: 'booking_paid',
           title: `Payment Received for ${bookingToPay.listing.title}`,
           message: `The user ${bookingToPay.user.fullName} has paid for their booking.`,
           relatedBookingId: confirmedBooking.id,
@@ -451,7 +451,7 @@ export const submitPaymentForBooking = async (req, res) => {
     const userSocketId = userSocketMap[booking.userId];
     if (userSocketId) {
       io.to(userSocketId).emit("booking_confirmed_notification", {
-        type: 'BOOKING_CONFIRMED',
+        type: 'booking_confirmed',
         title: `Booking Confirmed: ${booking.listing.title}!`,
         message: 'Your payment was successful and your booking is confirmed.',
         bookingId: booking.id,
@@ -462,7 +462,7 @@ export const submitPaymentForBooking = async (req, res) => {
     const partnerSocketId = userSocketMap[partner.userId];
     if (partnerSocketId) {
       io.to(partnerSocketId).emit("booking_paid_notification", {
-        type: 'BOOKING_PAID',
+        type: 'booking_paid',
         title: `Payment Received for: ${booking.listing.title}`,
         message: `A booking has been paid for and is now confirmed.`,
         bookingId: booking.id,

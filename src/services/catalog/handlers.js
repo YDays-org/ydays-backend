@@ -13,7 +13,7 @@ export const getListings = async (req, res) => {
   const amenityIds = amenities ? amenities.split(',').map(id => parseInt(id.trim(), 10)).filter(Number.isInteger) : [];
 
   // Separate where conditions for different parts of the query
-  const listingWhereConditions = [Prisma.sql`l.status = 'PUBLISHED'`];
+  const listingWhereConditions = [Prisma.sql`l.status = 'published'`];
   const scheduleWhereConditions = []; // For the subquery on pricing_schedules
   const havingConditions = [];
   let joinClauses = [];
@@ -22,8 +22,15 @@ export const getListings = async (req, res) => {
     listingWhereConditions.push(Prisma.sql`(l.title ILIKE ${'%' + q + '%'} OR l.description ILIKE ${'%' + q + '%'})`);
   }
   if (category) {
-    // This requires a join, which we already have.
-    listingWhereConditions.push(Prisma.sql`c.slug = ${category}`);
+    // Support filtering by category ID, slug, or name
+    const categoryValue = category.trim();
+    if (!isNaN(categoryValue)) {
+      // If it's a number, treat as ID
+      listingWhereConditions.push(Prisma.sql`c.id = ${parseInt(categoryValue)}`);
+    } else {
+      // If it's a string, try both slug and name
+      listingWhereConditions.push(Prisma.sql`(c.slug = ${categoryValue} OR c.name ILIKE ${'%' + categoryValue + '%'})`);
+    }
   }
   if (lat && lon && radius) {
     listingWhereConditions.push(Prisma.sql`ST_DWithin(l.location, ST_MakePoint(${parseFloat(lon)}, ${parseFloat(lat)})::geography, ${radius})`);
@@ -52,7 +59,7 @@ export const getListings = async (req, res) => {
   const listingWhereClause = Prisma.join(listingWhereConditions, ' AND ');
   const scheduleWhereClause = scheduleWhereConditions.length > 0 ? Prisma.sql`WHERE ${Prisma.join(scheduleWhereConditions, ' AND ')}` : Prisma.empty;
   const havingClause = havingConditions.length > 0 ? Prisma.sql`HAVING ${Prisma.join(havingConditions, ' AND ')}` : Prisma.empty;
-  const finalJoins = Prisma.join(joinClauses, ' ');
+  const finalJoins = joinClauses.length > 0 ? Prisma.join(joinClauses, ' ') : Prisma.empty;
 
   const subquery = Prisma.sql`
     SELECT
@@ -79,7 +86,7 @@ export const getListings = async (req, res) => {
     ${finalJoins}
     JOIN categories c ON l.category_id = c.id
     WHERE ${listingWhereClause}
-    GROUP BY l.id
+    GROUP BY l.id, l.average_rating, l.review_count
     ${havingClause}
   `;
 
@@ -195,7 +202,7 @@ export const getNewListings = async (req, res) => {
 
   try {
     const listings = await prisma.listing.findMany({
-      where: { status: 'PUBLISHED' },
+      where: { status: 'published' },
       orderBy: { createdAt: 'desc' },
       take: limit,
       skip: (page - 1) * limit,
@@ -204,7 +211,7 @@ export const getNewListings = async (req, res) => {
       },
     });
 
-    const total = await prisma.listing.count({ where: { status: 'PUBLISHED' } });
+    const total = await prisma.listing.count({ where: { status: 'published' } });
 
     res.status(200).json({
       success: true,
@@ -246,7 +253,7 @@ export const getTrendingListings = async (req, res) => {
       WHERE stat_date >= ${sevenDaysAgo}
       GROUP BY listing_id
     ) s ON l.id = s.listing_id
-    WHERE l.status = 'PUBLISHED'
+    WHERE l.status = 'published'
     ORDER BY s.trend_score DESC, l.average_rating DESC
     LIMIT ${limit}
     OFFSET ${(page - 1) * limit};
@@ -485,7 +492,7 @@ export const getPersonalizedFeed = async (req, res) => {
     }
     // Always exclude listings they've already booked or favorited.
     where.id = { notIn: interactedListingIds };
-    where.status = 'PUBLISHED';
+    where.status = 'published';
 
     // 4. Find listings to recommend.
     const recommendedListings = await prisma.listing.findMany({
