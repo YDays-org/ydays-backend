@@ -48,6 +48,7 @@ export const getListingsSchema = {
       Joi.string().trim(),
       Joi.number().integer().positive()
     ),
+    type: Joi.string().valid("activity", "event", "restaurant"),
     lat: Joi.string().regex(LATITUDE_REGEX),
     lon: Joi.string().regex(LONGITUDE_REGEX),
     radius: Joi.number().integer().min(100).max(50000),

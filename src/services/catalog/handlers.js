@@ -4,7 +4,7 @@ import prisma from "../../lib/prisma.js";
 // PUBLIC HANDLERS
 export const getListings = async (req, res) => {
   const {
-    q, category, lat, lon, radius = 10000,
+    q, category, type, lat, lon, radius = 10000,
     priceMin, priceMax, dateStart, dateEnd, amenities,
     page = 1, limit = 10
   } = req.query;
@@ -31,6 +31,11 @@ export const getListings = async (req, res) => {
       // If it's a string, try both slug and name
       listingWhereConditions.push(Prisma.sql`(c.slug = ${categoryValue} OR c.name ILIKE ${'%' + categoryValue + '%'})`);
     }
+  }
+  if (type) {
+    // Filter by listing type (activity, event, restaurant)
+    const typeValue = type.trim().toLowerCase();
+    listingWhereConditions.push(Prisma.sql`l.type = ${typeValue}::\"ListingType\"`);
   }
   if (lat && lon && radius) {
     listingWhereConditions.push(Prisma.sql`ST_DWithin(l.location, ST_MakePoint(${parseFloat(lon)}, ${parseFloat(lat)})::geography, ${radius})`);
@@ -93,7 +98,25 @@ export const getListings = async (req, res) => {
   const countQuery = Prisma.sql`SELECT COUNT(*) FROM (${subquery}) AS sub`;
   const dataQuery = Prisma.sql`
     SELECT
-      l.*,
+      l.id,
+      l.partner_id,
+      l.category_id,
+      l.type,
+      l.title,
+      l.description,
+      l.address,
+      l.phone_number,
+      l.website_url,
+      l.opening_hours,
+      l.working_days,
+      l.metadata,
+      l.cancellation_policy,
+      l.accessibility_info,
+      l.status,
+      l.average_rating,
+      l.review_count,
+      l.created_at,
+      l.updated_at,
       filtered.cheapest_price,
       (
         SELECT jsonb_build_object('mediaUrl', lm.media_url, 'isCover', lm.is_cover)
