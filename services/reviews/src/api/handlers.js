@@ -102,7 +102,7 @@ export const getReviewsForListing = async (req, res) => {
 export const addPartnerReply = async (req, res) => {
   const { id: reviewId } = req.params;
   const { reply } = req.body;
-  const partnerId = req.user.partner?.id;
+  const partnerId = req.user?.id;
 
   try {
     // 1. Find the review and its associated listing

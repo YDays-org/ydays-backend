@@ -285,7 +285,7 @@ export const getTrendingListings = async (req, res) => {
 // PARTNER-PROTECTED HANDLERS
 export const createListing = async (req, res) => {
   const { amenityIds, location, ...listingData } = req.body;
-  const partnerId = req.user.partner?.id;
+  const partnerId = req.user?.id;
 
   if (!partnerId) {
     return res.status(403).json({ success: false, message: "User is not a partner." });
@@ -332,7 +332,7 @@ export const createListing = async (req, res) => {
 export const updateListing = async (req, res) => {
   const { id } = req.params;
   const { amenityIds, location, ...updateData } = req.body;
-  const partnerId = req.user.partner?.id;
+  const partnerId = req.user?.id;
 
   try {
     const existingListing = await prisma.listing.findUnique({ where: { id } });
@@ -386,7 +386,7 @@ export const updateListing = async (req, res) => {
 
 export const deleteListing = async (req, res) => {
   const { id } = req.params;
-  const partnerId = req.user.partner?.id;
+  const partnerId = req.user?.id;
 
   try {
     const existingListing = await prisma.listing.findUnique({ where: { id } });

@@ -3,15 +3,19 @@
   "globalDependencies": [".env*"],
   "tasks": {
     "build": {
-      "dependsOn": ["^build"],
+      "dependsOn": ["^build", "^db:generate"],
       "inputs": ["$TURBO_DEFAULT$", ".env*"],
-      "outputs": ["dist/**"]
+      "outputs": ["dist/**"],
+      "env": ["DB_URL"]
     },
-    "db:migrate:dev": {
+    "db:generate": {
+      "cache": false
+    },
+    "db:migrate": {
       "cache": false,
       "persistent": true
     },
-    "db:migrate:deploy": {
+    "db:deploy": {
       "cache": false
     },
     "db:push": {
@@ -21,6 +25,7 @@
       "cache": false
     },
     "dev": {
+      "dependsOn": ["^db:generate"],
       "cache": false,
       "persistent": true
     },
