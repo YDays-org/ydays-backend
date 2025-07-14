@@ -8,12 +8,12 @@ import { authMiddleware } from "../../common/middlewares/auth.js";
 const router = Router();
 
 router.get(
-  "/",
+  "/:listingId",
   validationMiddleware(reviewSchemas.getReviewsSchema),
   reviewHandlers.getReviewsForListing
 );
 
-// router.use(authMiddleware);
+router.use(authMiddleware);
 
 router.post(
   "/",

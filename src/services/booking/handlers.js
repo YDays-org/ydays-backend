@@ -52,7 +52,7 @@ export const createReservation = async (req, res) => {
   const { id: userId } = req.user;
 
   try {
-    const { newBooking, partnerUser } = await prisma.$transaction(async (tx) => {
+    const { newBooking, partnerUser, listing } = await prisma.$transaction(async (tx) => {
       // Step 1: Fetch schedule and listing details, locking the row.
       const schedule = await tx.pricingSchedule.findUnique({
         where: { id: scheduleId },
@@ -74,19 +74,23 @@ export const createReservation = async (req, res) => {
         },
       });
 
-      if (!schedule) throw new Error("Pricing schedule not found.");
-      if (!schedule.isAvailable) throw new Error("This time slot is no longer available.");
+      if (!schedule) {
+        return res.status(400).json({ success: false, message: "Pricing schedule not found."});
+      }
+      if (!schedule.isAvailable) {
+        return res.status(400).json({ success: false, message: "This time slot is no longer available."});
+      }
 
       const { listing } = schedule;
       const partnerUser = listing.partner.user;
 
       if (!partnerUser) {
-        throw new Error("Could not find the partner associated with this listing.");
+        return res.status(400).json({ success: false, message: "Could not find the partner associated with this listing." });
       }
 
       const availableSlots = schedule.capacity - schedule.bookedSlots;
       if (numParticipants > availableSlots) {
-        throw new Error(`Not enough available slots. Only ${availableSlots} left.`);
+        return res.status(400).json({ success: false, message: `Not enough available slots. Only ${availableSlots} left.` });
       }
 
       // Optimistically increment booked slots. If partner cancels, we'll decrement.
@@ -106,7 +110,6 @@ export const createReservation = async (req, res) => {
       }
       const totalPrice = finalPricePerParticipant * numParticipants;
 
-
       const newBooking = await tx.booking.create({
         data: {
           userId,
@@ -122,26 +125,24 @@ export const createReservation = async (req, res) => {
       await tx.notification.create({
         data: {
           userId: partnerUser.id,
-          type: 'new_booking_request',
+          type: 'NEW_BOOKING_REQUEST',
           title: `New Booking Request for ${listing.title}`,
           message: `A new booking for ${numParticipants} person(s) is awaiting your approval.`,
           relatedBookingId: newBooking.id,
           relatedListingId: listing.id,
         },
       });
-
-
-      return { newBooking, partnerUser };
+      return { newBooking, partnerUser, listing };
     });
 
     // --- Notifications (outside transaction) ---
     // 1. Send email to partner
     sendMail({
       to: partnerUser.email,
-      subject: `New Booking Request for ${newBooking.listing.title}`,
+      subject: `New Booking Request for ${listing.title}`,
       html: `
         <h1>New Booking Request</h1>
-        <p>You have a new booking request for your listing: <strong>${newBooking.listing.title}</strong>.</p>
+        <p>You have a new booking request for your listing: <strong>${listing.title}</strong>.</p>
         <p>A user has requested a booking for ${newBooking.numParticipants} participant(s).</p>
         <p>Please log in to your dashboard to approve or cancel this reservation.</p>
       `,
@@ -150,9 +151,9 @@ export const createReservation = async (req, res) => {
     // 2. Send socket notification to partner
     const partnerSocketId = userSocketMap[partnerUser.id];
     if (partnerSocketId) {
-      io.to(partnerSocketId).emit("new_booking_request", {
+      io.to(partnerSocketId).emit("NEW_BOOKING_REQUEST", {
         title: `New Booking Request`,
-        message: `A new booking for ${newBooking.listing.title} is awaiting your approval.`,
+        message: `A new booking for ${listing.title} is awaiting your approval.`,
         bookingId: newBooking.id,
       });
     }
@@ -163,7 +164,8 @@ export const createReservation = async (req, res) => {
       data: newBooking
     });
   } catch (error) {
-    res.status(400).json({ success: false, message: error.message });
+    console.log(error)
+    res.status(500).json({ success: false, message: error.message });
   }
 };
 
@@ -191,7 +193,7 @@ export const getReservations = async (req, res) => {
           select: { id: true, fullName: true, email: true },
         },
       },
-      skip, // Ensure skip is always passed
+      skip,
       take: parsedLimit,
       orderBy: {
         createdAt: "desc",
@@ -205,9 +207,9 @@ export const getReservations = async (req, res) => {
       data: bookings,
       pagination: {
         total,
-        page,
-        limit,
-        totalPages: Math.ceil(total / limit),
+        page: parsedPage,
+        limit: parsedLimit,
+        totalPages: Math.ceil(total / parsedLimit),
       },
     });
   } catch (error) {
@@ -249,11 +251,11 @@ export const cancelReservation = async (req, res) => {
       });
 
       if (!booking || booking.userId !== userId) {
-        throw new Error("Booking not found or you do not have permission to cancel it.");
+        return res.status(400).json({ success: false, message:"Booking not found or you do not have permission to cancel it."});
       }
 
       if (booking.status === "CANCELLED" || booking.status === "COMPLETED") {
-        throw new Error(`Booking cannot be cancelled as it is already ${booking.status}.`);
+        return res.status(400).json({ success: false, message:`Booking cannot be cancelled as it is already ${booking.status}.`});
       }
 
       // Restore the booked slots
@@ -277,7 +279,7 @@ export const cancelReservation = async (req, res) => {
 
     res.status(200).json({ success: true, message: "Booking cancelled successfully.", data: updatedBooking });
   } catch (error) {
-    res.status(400).json({ success: false, message: error.message });
+    res.status(500).json({ success: false, message: error.message });
   }
 };
 
@@ -288,7 +290,6 @@ export const updateReservation = async (req, res) => {
 
   try {
     const updatedBooking = await prisma.$transaction(async (tx) => {
-      // 1. Get the current booking and schedule details, locking them for the transaction.
       const currentBooking = await tx.booking.findUnique({
         where: { id: bookingId },
         include: {
@@ -308,34 +309,30 @@ export const updateReservation = async (req, res) => {
         },
       });
 
-      // 2. Perform authorization and validation checks.
       if (!currentBooking) {
-        throw new Error("Booking not found.");
+        return res.status(400).json({ success: false, message: "Booking not found."});
       }
       if (currentBooking.userId !== userId) {
-        throw new Error("You do not have permission to modify this booking.");
+        return res.status(400).json({ success: false, message: "You do not have permission to modify this booking."});
       }
       if (currentBooking.status !== 'CONFIRMED') {
-        throw new Error(`Cannot modify a booking with status '${currentBooking.status}'.`);
+        return res.status(400).json({ success: false, message: `Cannot modify a booking with status '${currentBooking.status}'.`});
       }
 
-      // 3. Calculate the change in participants and check against schedule capacity.
       const participantChange = newNumParticipants - currentBooking.numParticipants;
 
       if (participantChange > 0) { // If adding more participants
         const availableSlots = currentBooking.schedule.capacity - currentBooking.schedule.bookedSlots;
         if (participantChange > availableSlots) {
-          throw new Error(`Not enough available slots. Only ${availableSlots} more slots are available.`);
+          return res.status(400).json({ success: false, message: `Not enough available slots. Only ${availableSlots} more slots are available.`});
         }
       }
 
-      // 4. Update the booked slots count on the pricing schedule.
       await tx.pricingSchedule.update({
         where: { id: currentBooking.scheduleId },
         data: { bookedSlots: { increment: participantChange } },
       });
 
-      // 5. Update the booking with the new participant count and total price, considering promotions.
       const activePromotion = currentBooking.schedule.listing.promotions[0]?.promotion;
       let finalPricePerParticipant = currentBooking.schedule.price;
       if (activePromotion) {
@@ -360,32 +357,41 @@ export const updateReservation = async (req, res) => {
 
     res.status(200).json({ success: true, message: "Booking updated successfully.", data: updatedBooking });
   } catch (error) {
-    res.status(400).json({ success: false, message: error.message });
+    res.status(500).json({ success: false, message: error.message });
   }
 };
 
 export const submitPaymentForBooking = async (req, res) => {
   const { id: bookingId } = req.params;
   const { id: userId } = req.user;
-  // const { cardNumber, expiryMonth, expiryYear, cvc } = req.body; // Mocked for now
 
+  // const { cardNumber, expiryMonth, expiryYear, cvc } = req.body; // Mocked for now
   try {
     const { booking, partner } = await prisma.$transaction(async (tx) => {
-      // 1. Validate the booking
       const bookingToPay = await tx.booking.findUnique({
         where: { id: bookingId },
-        include: { listing: { include: { partner: true } }, user: true },
+        include: { 
+          listing: { include: { partner: true } 
+          }, 
+          user: true,
+          schedule: { select: { currency: true } }
+        },
       });
 
-      if (!bookingToPay) throw new Error("Booking not found.");
-      if (bookingToPay.userId !== userId) throw new Error("You do not have permission to pay for this booking.");
-      if (bookingToPay.status !== 'AWAITING_PAYMENT') throw new Error(`Booking is not awaiting payment. Current status: '${bookingToPay.status}'.`);
+      if (!bookingToPay) {
+        return res.status(400).json({ success: false, message: "Booking not found."});
+      }
+      if (bookingToPay.userId !== userId) {
+        return res.status(400).json({ success: false, message: "You do not have permission to pay for this booking."});
+      }
+      if (bookingToPay.status !== 'AWAITING_PAYMENT') {
+        return res.status(400).json({ success: false, message: `Booking is not awaiting payment. Current status: '${bookingToPay.status}'.`});
+      }
 
-      // 2. "Process" the payment: Update payment and booking statuses
       await tx.payment.update({
-        where: { bookingId: bookingId },
+        where: { bookingId: bookingId }, 
         data: {
-          status: 'SUCCEEDED',
+          status: 'SUCCEEDED', // Update the status
           paymentMethodDetails: { cardType: "visa", last4: req.body.cardNumber.slice(-4) },
         },
       });
@@ -393,6 +399,7 @@ export const submitPaymentForBooking = async (req, res) => {
       const confirmedBooking = await tx.booking.update({
         where: { id: bookingId },
         data: { status: 'CONFIRMED' },
+        include: { listing: true, user: true }
       });
 
       // 3. Create notifications for both user and partner
@@ -439,8 +446,6 @@ export const submitPaymentForBooking = async (req, res) => {
       return { booking: confirmedBooking, partner: bookingToPay.listing.partner };
     });
 
-    // --- Out-of-transaction notifications ---
-
     // Notify User of success
     sendMail({
       to: booking.user.email,
@@ -470,9 +475,9 @@ export const submitPaymentForBooking = async (req, res) => {
     }
 
     res.status(200).json({ success: true, message: "Payment successful. Booking is confirmed." });
-
   } catch (error) {
-    res.status(400).json({ success: false, message: error.message });
+    console.log(error)
+    res.status(500).json({ success: false, message: error.message });
   }
 };
 

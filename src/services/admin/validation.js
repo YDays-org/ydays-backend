@@ -56,6 +56,11 @@ export const listUsersSchema = {
     limit: Joi.number().integer().min(1).max(100).default(20),
   }),
 };
+export const userIdParamSchema = {
+  params: Joi.object({
+    id: Joi.string().uuid().required(),
+  }),
+};
 
 export const updateUserRoleSchema = {
   params: Joi.object({

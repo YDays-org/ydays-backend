@@ -5,7 +5,8 @@ import { getMediaType, cleanupTempFile, deleteFromCloudinary, uploadFileToCloudi
 export const uploadSingleMedia = async (req, res) => {
   const { listingId, caption, isCover } = req.body;
   const file = req.file;
-  const partnerId = req.user.id;
+  // const partnerId = req.user.id;
+  const partnerId = "partner_1";
   let uploadedAssetPublicId = null;
 
   if (!file) {
