@@ -17,7 +17,7 @@ export const bookingIdParamSchema = {
 
 export const listingIdParamSchema = {
   params: Joi.object({
-    listingId: Joi.string().uuid().required(),
+    listingId: Joi.string().required(),
   }),
 };
 
@@ -53,6 +53,24 @@ export const updateScheduleSchema = {
   }).min(1),
 };
 
+export const createBulkSchedulesSchema = {
+  params: Joi.object({
+    listingId: Joi.string().uuid().required(),
+  }),
+  body: Joi.object({
+    schedules: Joi.array().items(
+      Joi.object({
+        startTime: Joi.date().iso().required(),
+        endTime: Joi.date().iso().required(),
+        price: Joi.number().precision(2).min(0).required(),
+        capacity: Joi.number().integer().min(1).required(),
+        isAvailable: Joi.boolean().default(true),
+      })
+    ).min(1).required(),
+    publishListing: Joi.boolean().default(true),
+  }),
+};
+
 export const getStatsSchema = {
   query: Joi.object({
     startDate: Joi.date().iso(),
@@ -69,6 +87,28 @@ export const createPromotionSchema = {
     startDate: Joi.date().iso().required(),
     endDate: Joi.date().iso().min(Joi.ref('startDate')).required(),
     isActive: Joi.boolean().default(true),
+  }),
+};
+
+export const updatePromotionSchema = {
+  params: Joi.object({
+    promotionId: Joi.string().uuid().required(),
+  }),
+  body: Joi.object({
+    name: Joi.string(),
+    description: Joi.string().allow(null, ''),
+    type: Joi.string().valid('PERCENTAGE_DISCOUNT', 'FIXED_AMOUNT_DISCOUNT', 'VISIBILITY_BOOST'),
+    value: Joi.number().min(0),
+    startDate: Joi.date().iso(),
+    endDate: Joi.date().iso().min(Joi.ref('startDate')),
+    isActive: Joi.boolean(),
+  }).min(1),
+};
+
+export const removePromotionFromListingSchema = {
+  params: Joi.object({
+    promotionId: Joi.string().uuid().required(),
+    listingId: Joi.string().uuid().required(),
   }),
 };
 
@@ -89,10 +129,10 @@ export const promotionIdParamSchema = {
 
 export const getListingPerformanceStatsSchema = {
   params: Joi.object({
-    listingId: Joi.string().uuid().required(),
+    listingId: Joi.string().required(),
   }),
   query: Joi.object({
     startDate: Joi.date().iso().required(),
     endDate: Joi.date().iso().min(Joi.ref('startDate')).required(),
   }),
-}; 
+};

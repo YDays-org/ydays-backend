@@ -4,7 +4,7 @@ import { io, userSocketMap } from "../../config/socket.js";
 
 export const getPartnerBookings = async (req, res) => {
   const partnerId = req.user?.id;
-  const { page, limit, status, listingId } = req.query;
+  const { page = 1, limit = 10, status, listingId } = req.query;
 
   if (!partnerId) {
     return res.status(403).json({ success: false, message: "User is not a partner." });
@@ -19,6 +19,9 @@ export const getPartnerBookings = async (req, res) => {
   };
 
   try {
+    const take = parseInt(limit, 10);
+    const skip = (parseInt(page, 10) - 1) * take;
+
     const bookings = await prisma.booking.findMany({
       where,
       include: {
@@ -29,22 +32,23 @@ export const getPartnerBookings = async (req, res) => {
           select: { id: true, fullName: true, email: true },
         },
       },
-      skip: (page - 1) * limit,
-      take: limit,
+      skip,
+      take,
       orderBy: {
         createdAt: "desc",
       },
     });
 
-    const total = await prisma.booking.count({ where });
+    const totalFromDb = await prisma.booking.count({ where });
+    const total = Number(totalFromDb);
 
     res.status(200).json({
       success: true,
       data: bookings,
       pagination: {
         total,
-        page,
-        limit,
+        page: parseInt(page, 10),
+        limit: take,
         totalPages: Math.ceil(total / limit),
       },
     });
@@ -95,14 +99,30 @@ export const createSchedule = async (req, res) => {
       return res.status(403).json({ success: false, message: "Forbidden: You do not own this listing or it does not exist." });
     }
 
-    const newSchedule = await prisma.pricingSchedule.create({
-      data: {
-        listingId,
-        ...scheduleData,
-      },
+    const newSchedule = await prisma.$transaction(async (tx) => {
+      const schedule = await tx.pricingSchedule.create({
+        data: {
+          listingId,
+          ...scheduleData,
+        },
+      });
+
+      // Business Logic: Auto-publish listing when first schedule is added
+      if (listing.status === 'DRAFT') {
+        await tx.listing.update({
+          where: { id: listingId },
+          data: { status: 'PUBLISHED' },
+        });
+      }
+
+      return schedule;
     });
 
-    res.status(201).json({ success: true, data: newSchedule });
+    res.status(201).json({
+      success: true,
+      data: newSchedule,
+      message: listing.status === 'DRAFT' ? 'Schedule created and listing published!' : 'Schedule created successfully!'
+    });
   } catch (error) {
     if (error.code === 'P2002') {
       return res.status(409).json({ success: false, message: 'A schedule for this listing at the specified start time already exists.' });
@@ -176,14 +196,32 @@ export const deleteSchedule = async (req, res) => {
         id: scheduleId,
         listing: { partnerId },
       },
+      include: {
+        listing: {
+          include: {
+            schedules: true,
+          },
+        },
+      },
     });
 
     if (!schedule) {
       return res.status(403).json({ success: false, message: "Schedule not found or you do not have permission to delete it." });
     }
 
-    await prisma.pricingSchedule.delete({
-      where: { id: scheduleId },
+    await prisma.$transaction(async (tx) => {
+      await tx.pricingSchedule.delete({
+        where: { id: scheduleId },
+      });
+
+      // Business Logic: Auto-draft listing if no schedules remain
+      const remainingSchedules = schedule.listing.schedules.filter(s => s.id !== scheduleId);
+      if (remainingSchedules.length === 0 && schedule.listing.status === 'PUBLISHED') {
+        await tx.listing.update({
+          where: { id: schedule.listingId },
+          data: { status: 'DRAFT' },
+        });
+      }
     });
 
     res.status(204).send();
@@ -246,17 +284,17 @@ export const getPartnerDashboardStats = async (req, res) => {
 
     // Format stats for a clean response
     const stats = {
-      totalRevenue: totalRevenueResult._sum.totalPrice || 0,
-      totalListings,
+      totalRevenue: Number(totalRevenueResult._sum.totalPrice) || 0,
+      totalListings: Number(totalListings),
       bookings: {
-        total: bookingsByStatus.reduce((acc, curr) => acc + curr._count.id, 0),
-        confirmed: bookingsByStatus.find(b => b.status === 'CONFIRMED')?._count.id || 0,
-        completed: bookingsByStatus.find(b => b.status === 'COMPLETED')?._count.id || 0,
-        cancelled: bookingsByStatus.find(b => b.status === 'CANCELLED')?._count.id || 0,
+        total: bookingsByStatus.reduce((acc, curr) => acc + Number(curr._count.id), 0),
+        confirmed: Number(bookingsByStatus.find(b => b.status === 'CONFIRMED')?._count.id) || 0,
+        completed: Number(bookingsByStatus.find(b => b.status === 'COMPLETED')?._count.id) || 0,
+        cancelled: Number(bookingsByStatus.find(b => b.status === 'CANCELLED')?._count.id) || 0,
       },
       reviews: {
-        total: totalReviews,
-        awaitingReply: reviewsAwaitingReply
+        total: Number(totalReviews),
+        awaitingReply: Number(reviewsAwaitingReply)
       }
     };
 
@@ -269,21 +307,23 @@ export const getPartnerDashboardStats = async (req, res) => {
 
 export const cancelReservationByPartner = async (req, res) => {
   const { id: bookingId } = req.params;
-  const partnerId = req.user?.id;
+  const partnerId = "partner_1";
 
   try {
     const { booking, userEmail, userFullName, userId } = await prisma.$transaction(async (tx) => {
       const booking = await tx.booking.findUnique({
         where: { id: bookingId },
-        include: { listing: true, user: { select: { email: true, fullName: true, id: true } } },
+        include: { listing: true, schedule: true, user: { select: { email: true, fullName: true, id: true } } },
       });
 
-      if (!booking) throw new Error("Booking not found.");
+      if (!booking) {
+        return res.status(400).json({ success: false, message: "Booking not found." });
+      }
       if (booking.listing.partnerId !== partnerId) {
-        throw new Error("You do not have permission to cancel this booking.");
+        return res.status(400).json({ success: false, message: "You do not have permission to cancel this booking." });
       }
       if (booking.status === "CANCELLED" || booking.status === "COMPLETED") {
-        throw new Error(`Booking cannot be cancelled as it is already ${booking.status}.`);
+        return res.status(400).json({ success: false, message: `Booking cannot be cancelled as it is already ${booking.status}.` });
       }
 
       await tx.pricingSchedule.update({
@@ -291,15 +331,19 @@ export const cancelReservationByPartner = async (req, res) => {
         data: { bookedSlots: { decrement: booking.numParticipants } },
       });
 
-      await tx.booking.update({
+      const cancelledBooking = await tx.booking.update({
         where: { id: bookingId },
         data: { status: "CANCELLED" },
+        include: {
+          listing: true,
+          schedule: true,
+        }
       });
 
       await tx.notification.create({
         data: {
           userId: booking.userId,
-          type: 'booking_cancelled_by_partner',
+          type: 'BOOKING_CANCELLED_BY_PARTNER',
           title: `Booking Cancelled: ${booking.listing.title}`,
           message: `Your booking for ${booking.listing.title} on ${new Date(booking.schedule.startTime).toLocaleString()} was cancelled by the host.`,
           relatedBookingId: booking.id,
@@ -307,7 +351,7 @@ export const cancelReservationByPartner = async (req, res) => {
         },
       });
 
-      return { booking, userEmail: booking.user.email, userFullName: booking.user.fullName, userId: booking.user.id };
+      return { booking: cancelledBooking, userEmail: booking.user.email, userFullName: booking.user.fullName, userId: booking.user.id };
     });
 
     sendMail({
@@ -327,13 +371,14 @@ export const cancelReservationByPartner = async (req, res) => {
 
     res.status(200).json({ success: true, message: "Booking cancelled successfully." });
   } catch (error) {
+    console.log(error)
     res.status(400).json({ success: false, message: error.message });
   }
 };
 
 export const approveReservationByPartner = async (req, res) => {
   const { id: bookingId } = req.params;
-  const partnerId = req.user?.id;
+  const partnerId = "partner_1";
 
   try {
     const { booking, user } = await prisma.$transaction(async (tx) => {
@@ -342,31 +387,38 @@ export const approveReservationByPartner = async (req, res) => {
         include: {
           listing: true,
           user: true,
+          schedule: true,
         },
       });
 
-      if (!bookingToApprove) throw new Error("Booking not found.");
+      if (!bookingToApprove) {
+        return res.status(400).json({ success: false, message: "Booking not found." });
+      }
       if (bookingToApprove.listing.partnerId !== partnerId) {
-        throw new Error("You do not have permission to approve this booking.");
+        return res.status(400).json({ success: false, message: "You do not have permission to approve this booking." });
       }
       if (bookingToApprove.status !== 'PENDING') {
-        throw new Error(`Only pending bookings can be approved. This booking is currently '${bookingToApprove.status}'.`);
+        return res.status(400).json({ success: false, message: `Only pending bookings can be approved. This booking is currently '${bookingToApprove.status}'.` });
       }
 
       const updatedBooking = await tx.booking.update({
         where: { id: bookingId },
-        data: { status: "AWAITING_PAYMENT" },
+        data: { status: 'AWAITING_PAYMENT' },
+        include: {
+          listing: true, 
+        },
       });
 
+      // Create a mock payment record for demo purposes
       await tx.payment.create({
         data: {
           bookingId: updatedBooking.id,
           userId: bookingToApprove.userId,
-          amount: updatedBooking.totalPrice,
-          currency: "MAD", // Assuming MAD, adjust if dynamic
+          amount: bookingToApprove.totalPrice,
+          currency: 'MAD',
           status: 'PENDING',
-          paymentGateway: 'system', // Indicates internal system payment
-          gatewayTransactionId: `mock_${updatedBooking.id}_${Date.now()}` // Mock ID
+          paymentGateway: 'INTERNAL',
+          gatewayTransactionId: `mock_${updatedBooking.id}_${Date.now()}`,
         }
       });
 
@@ -376,7 +428,7 @@ export const approveReservationByPartner = async (req, res) => {
           type: 'BOOKING_APPROVED_FOR_PAYMENT',
           title: `Action Required: Your booking for ${bookingToApprove.listing.title} is approved!`,
           message: `Your booking is approved and is now awaiting payment. Please complete the payment to confirm your spot.`,
-          relatedBookingId: updatedBooking.id,
+          relatedBookingId: bookingToApprove.id,
           relatedListingId: bookingToApprove.listingId,
         },
       });
@@ -404,9 +456,9 @@ export const approveReservationByPartner = async (req, res) => {
     }
 
     res.status(200).json({ success: true, message: "Booking approved and user has been notified to complete payment." });
-
   } catch (error) {
-    res.status(400).json({ success: false, message: error.message });
+    console.log(error)
+    res.status(500).json({ success: false, message: error.message });
   }
 };
 
@@ -425,6 +477,7 @@ export const createPromotion = async (req, res) => {
         ...promotionData,
       },
     });
+
     res.status(201).json({ success: true, data: newPromotion });
   } catch (error) {
     res.status(500).json({ success: false, message: "Failed to create promotion.", error: error.message });
@@ -443,9 +496,119 @@ export const getPromotions = async (req, res) => {
       where: { partnerId },
       orderBy: { createdAt: 'desc' },
     });
+
     res.status(200).json({ success: true, data: promotions });
   } catch (error) {
     res.status(500).json({ success: false, message: "Failed to fetch promotions.", error: error.message });
+  }
+};
+
+export const getPromotionById = async (req, res) => {
+  const { promotionId } = req.params;
+  const partnerId = req.user?.id;
+
+  try {
+    const promotion = await prisma.promotion.findFirst({
+      where: { id: promotionId, partnerId },
+      include: { listings: { select: { listingId: true } } }
+    });
+
+    if (!promotion) {
+      return res.status(404).json({ success: false, message: "Promotion not found or you do not have permission to view it." });
+    }
+
+    res.status(200).json({ success: true, data: promotion });
+  } catch (error) {
+    res.status(500).json({ success: false, message: "Failed to fetch promotion.", error: error.message });
+  }
+};
+
+export const updatePromotion = async (req, res) => {
+  const { promotionId } = req.params;
+  const partnerId = req.user?.id;
+  const updateData = req.body;
+
+  try {
+    const promotion = await prisma.promotion.findFirst({
+      where: { id: promotionId, partnerId },
+    });
+
+    if (!promotion) {
+      return res.status(403).json({ success: false, message: "Promotion not found or you do not have permission to update it." });
+    }
+
+    const updatedPromotion = await prisma.promotion.update({
+      where: { id: promotionId },
+      data: updateData,
+    });
+
+    res.status(200).json({ success: true, data: updatedPromotion });
+  } catch (error) {
+    res.status(500).json({ success: false, message: "Failed to update promotion.", error: error.message });
+  }
+};
+
+export const deletePromotion = async (req, res) => {
+  const { promotionId } = req.params;
+  const partnerId = req.user?.id;
+
+  try {
+    await prisma.$transaction(async (tx) => {
+      const promotion = await tx.promotion.findFirst({
+        where: { id: promotionId, partnerId }
+      });
+
+      if (!promotion) {
+        return res.status(400).json({success: false, message: "Promotion not found or you do not have permission to delete it."});
+      }
+
+      await tx.listingPromotion.deleteMany({
+        where: { promotionId: promotionId },
+      });
+
+      await tx.promotion.delete({
+        where: { id: promotionId },
+      });
+    });
+
+    res.status(204).send();
+  } catch (error) {
+    if (error.message.includes("not found")) {
+      return res.status(404).json({ success: false, message: error.message });
+    }
+    res.status(500).json({ success: false, message: "Failed to delete promotion.", error: error.message });
+  }
+};
+
+export const removePromotionFromListing = async (req, res) => {
+  const { promotionId, listingId } = req.params;
+  const partnerId = req.user?.id;
+
+  try {
+    // Verify the partner owns the listing before proceeding.
+    const listing = await prisma.listing.findFirst({
+      where: { id: listingId, partnerId }
+    });
+
+    if (!listing) {
+      return res.status(403).json({ success: false, message: "Listing not found or you do not have permission to modify it." });
+    }
+
+    await prisma.listingPromotion.delete({
+      where: {
+        listingId_promotionId: {
+          listingId: listingId,
+          promotionId: promotionId,
+        },
+      },
+    });
+
+    res.status(204).send();
+  } catch (error) {
+    if (error.code === 'P2025') {
+      return res.status(404).json({ success: false, message: 'This promotion was not applied to the specified listing.' });
+    }
+    res.status(500).json({ success: false, message: "Failed to remove promotion from listing.", error: error.message });
   }
 };
 
@@ -460,8 +623,9 @@ export const applyPromotionToListings = async (req, res) => {
       const promotion = await tx.promotion.findFirst({
         where: { id: promotionId, partnerId },
       });
+
       if (!promotion) {
-        throw new Error("Promotion not found or you do not have permission to use it.");
+        return res.status(400).json({ success: false, message: "Promotion not found or you do not have permission to use it." });
       }
 
       // 2. Verify all listings exist and belong to the partner.
@@ -474,7 +638,7 @@ export const applyPromotionToListings = async (req, res) => {
       });
 
       if (listings.length !== listingIds.length) {
-        throw new Error("One or more listings were not found or do not belong to you.");
+        return res.status(400).json({ success: false, message: "One or more listings were not found or do not belong to you." });
       }
 
       // 3. Create the associations.
@@ -492,9 +656,56 @@ export const applyPromotionToListings = async (req, res) => {
     });
 
     res.status(200).json({ success: true, message: `Successfully applied promotion to ${result.count} listings.` });
-
   } catch (error) {
-    res.status(400).json({ success: false, message: error.message });
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+export const createBulkSchedules = async (req, res) => {
+  const { listingId } = req.params;
+  const partnerId = req.user?.id;
+  const { schedules, publishListing } = req.body;
+
+  try {
+    const listing = await prisma.listing.findFirst({
+      where: { id: listingId, partnerId },
+    });
+
+    if (!listing) {
+      return res.status(403).json({ success: false, message: "Forbidden: You do not own this listing or it does not exist." });
+    }
+
+    const result = await prisma.$transaction(async (tx) => {
+      const createdSchedules = await tx.pricingSchedule.createMany({
+        data: schedules.map(schedule => ({
+          listingId,
+          ...schedule,
+        })),
+      });
+
+      let updatedListing = listing;
+      if (publishListing && listing.status === 'DRAFT') {
+        updatedListing = await tx.listing.update({
+          where: { id: listingId },
+          data: { status: 'PUBLISHED' },
+        });
+      }
+
+      return { createdSchedules, updatedListing };
+    });
+
+    res.status(201).json({
+      success: true,
+      data: result.createdSchedules,
+      message: publishListing && listing.status === 'DRAFT'
+        ? `${schedules.length} schedules created and listing published!`
+        : `${schedules.length} schedules created successfully!`
+    });
+  } catch (error) {
+    if (error.code === 'P2002') {
+      return res.status(409).json({ success: false, message: 'One or more schedules conflict with existing ones.' });
+    }
+    res.status(500).json({ success: false, message: "Failed to create schedules.", error: error.message });
   }
 };
 
@@ -513,7 +724,7 @@ export const getListingPerformanceStats = async (req, res) => {
       return res.status(403).json({ success: false, message: "Listing not found or you do not have permission to view its stats." });
     }
 
-    const stats = await prisma.listingDailyStats.findMany({
+    const statsFromDb = await prisma.listingDailyStats.findMany({
       where: {
         listingId,
         statDate: {
@@ -526,8 +737,16 @@ export const getListingPerformanceStats = async (req, res) => {
       }
     });
 
+    const stats = statsFromDb.map(stat => ({
+      ...stat,
+      id: Number(stat.id),
+      viewCount: Number(stat.viewCount),
+      bookingCount: Number(stat.bookingCount),
+    }));
+
     res.status(200).json({ success: true, data: stats });
   } catch (error) {
+    console.log(error)
     res.status(500).json({ success: false, message: "Failed to fetch listing performance stats.", error: error.message });
   }
-}; 
+};

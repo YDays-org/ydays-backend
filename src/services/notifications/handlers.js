@@ -2,26 +2,30 @@ import prisma from "../../lib/prisma.js";
 
 export const getNotifications = async (req, res) => {
   const { id: userId } = req.user;
-  const { page, limit } = req.query;
+  const { page = 1, limit = 20 } = req.query;
 
   try {
+    const take = parseInt(limit, 10);
+    const skip = (parseInt(page, 10) - 1) * take;
+
     const notifications = await prisma.notification.findMany({
       where: { userId },
-      skip: (page - 1) * limit,
-      take: limit,
+      skip,
+      take,
       orderBy: { createdAt: "desc" },
     });
 
-    const total = await prisma.notification.count({ where: { userId } });
+    const totalFromDb = await prisma.notification.count({ where: { userId } });
+    const total = Number(totalFromDb);
 
     res.status(200).json({
       success: true,
       data: notifications,
       pagination: {
         total,
-        page,
-        limit,
-        totalPages: Math.ceil(total / limit),
+        page: parseInt(page, 10),
+        limit: take,             
+        totalPages: Math.ceil(total / take),
       },
     });
   } catch (error) {
@@ -37,7 +41,7 @@ export const markAsRead = async (req, res) => {
     const updatedNotification = await prisma.notification.updateMany({
       where: {
         id: notificationId,
-        userId, // Ensure users can only mark their own notifications as read
+        userId,
       },
       data: { isRead: true },
     });

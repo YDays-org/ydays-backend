@@ -45,6 +45,7 @@ export const getListingsSchema = {
   query: Joi.object({
     q: Joi.string().trim().allow(""),
     category: Joi.string().trim(),
+    type: Joi.string().valid("ACTIVITY", "EVENT", "RESTAURANT"),
     lat: Joi.string().regex(LATITUDE_REGEX),
     lon: Joi.string().regex(LONGITUDE_REGEX),
     radius: Joi.number().integer().min(100).max(50000),
@@ -76,15 +77,15 @@ export const createListingSchema = {
     location: Joi.object({
       lat: Joi.number().required(),
       lon: Joi.number().required(),
-    }).required(),
+    }),
     phoneNumber: Joi.string().allow(null, ''),
     website: Joi.string().uri().allow(null, ''),
     openingHours: openingHoursSchema,
     workingDays: Joi.array().items(Joi.string()),
-    categoryId: Joi.number().integer(),
+    categoryId: Joi.number().integer().required(),
     cancellationPolicy: Joi.string().allow(null, ''),
     accessibilityInfo: Joi.string().allow(null, ''),
-    amenityIds: Joi.array().items(Joi.number().integer()),
+    amenityIds: Joi.array().items(Joi.number().integer()).default([]),
 
     // Type-specific Metadata
     metadata: Joi.when('type', {

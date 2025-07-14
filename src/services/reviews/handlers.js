@@ -66,10 +66,13 @@ export const submitReview = async (req, res) => {
 };
 
 export const getReviewsForListing = async (req, res) => {
-  const { listingId } = req.query;
-  const { page, limit } = req.query;
+  const { listingId } = req.params;
+  const { page = 1, limit = 10 } = req.query;
 
   try {
+    const take = parseInt(limit, 10);
+    const skip = (parseInt(page, 10) - 1) * take;
+
     const reviews = await prisma.review.findMany({
       where: { listingId },
       include: {
@@ -77,21 +80,22 @@ export const getReviewsForListing = async (req, res) => {
           select: { fullName: true, profilePictureUrl: true },
         },
       },
-      skip: (page - 1) * limit,
-      take: limit,
+      skip,
+      take, 
       orderBy: { createdAt: "desc" },
     });
 
-    const total = await prisma.review.count({ where: { listingId } });
+    const totalFromDb = await prisma.review.count({ where: { listingId } });
+    const total = Number(totalFromDb);
 
     res.status(200).json({
       success: true,
       data: reviews,
       pagination: {
         total,
-        page,
-        limit,
-        totalPages: Math.ceil(total / limit),
+        page: parseInt(page, 10), 
+        limit: take, 
+        totalPages: Math.ceil(total / take),
       },
     });
   } catch (error) {
@@ -105,13 +109,11 @@ export const addPartnerReply = async (req, res) => {
   const partnerId = req.user?.id;
 
   try {
-    // 1. Find the review and its associated listing
     const review = await prisma.review.findUnique({
       where: { id: reviewId },
       include: { listing: true },
     });
 
-    // 2. Verify ownership
     if (!review) {
       return res.status(404).json({ success: false, message: "Review not found." });
     }
@@ -119,7 +121,6 @@ export const addPartnerReply = async (req, res) => {
       return res.status(403).json({ success: false, message: "Forbidden: You do not own this listing." });
     }
 
-    // 3. Update the review with the reply
     const updatedReview = await prisma.review.update({
       where: { id: reviewId },
       data: { partnerReply: reply },

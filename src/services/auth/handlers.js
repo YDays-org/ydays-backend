@@ -215,9 +215,7 @@ export const requestPasswordReset = async (req, res) => {
       });
     }
   } catch (error) {
-    // Handle any other errors
     console.error("Password reset request failed:", error);
-    res.status(200).json({ success: true, message: `If an account with ${email} exists, a password reset link has been sent.` });
     return res.status(500).json({
       success: false,
       error: "An error occurred while processing your request. Please try again later."
@@ -303,7 +301,7 @@ export const syncFirebaseUser = async (req, res) => {
           id: uid,
           email: email,
           fullName: name || email.split('@')[0], // fallback to email prefix
-          role: UserRole.customer, // default role
+          role: "CUSTOMER", // default role
           emailVerified: email_verified || false,
           phoneNumber: phone_number || null,
           phoneVerified: phone_number ? true : false,

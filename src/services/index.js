@@ -17,12 +17,6 @@ apiRouter.get("/", (req, res) => {
   });
 });
 
-apiRouter.get("/a", (req, res) => {
-  res.status(200).json({
-    message: "wad healthy",
-    timestamp: new Date().toISOString(),
-  });
-});
 apiRouter.use("/auth", authApp);
 apiRouter.use("/partner", partnerApp);
 apiRouter.use("/admin", adminApp);

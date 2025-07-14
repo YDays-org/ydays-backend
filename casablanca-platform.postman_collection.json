@@ -1386,6 +1386,678 @@
           "response": []
         }
       ]
+    },
+    {
+      "name": "Booking Service",
+      "item": [
+        {
+          "name": "[PUBLIC] Get Availability",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/booking/availability?listingId={{listingId}}&date=2025-08-15",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "booking", "availability"],
+              "query": [
+                {
+                  "key": "listingId",
+                  "value": "{{listingId}}"
+                },
+                {
+                  "key": "date",
+                  "value": "2025-08-15"
+                }
+              ]
+            },
+            "description": "Gets availability for a specific listing on a specific date. Returns all available schedules with capacity information."
+          },
+          "response": []
+        },
+        {
+          "name": "[CUSTOMER] Create Reservation Request",
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{customer_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"scheduleId\": \"{{scheduleId}}\",\n    \"numParticipants\": 2\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/booking/reservations",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "booking", "reservations"]
+            },
+            "description": "Creates a new reservation request. Status will be PENDING and partner will be notified. Saves the bookingId."
+          },
+          "response": []
+        },
+        {
+          "name": "[CUSTOMER] Get My Reservations",
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{customer_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/booking/reservations?page=1&limit=10&status=CONFIRMED",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "booking", "reservations"],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "1"
+                },
+                {
+                  "key": "limit",
+                  "value": "10"
+                },
+                {
+                  "key": "status",
+                  "value": "CONFIRMED",
+                  "disabled": true
+                }
+              ]
+            },
+            "description": "Gets all reservations for the authenticated user with optional filtering by status."
+          },
+          "response": []
+        },
+        {
+          "name": "[CUSTOMER] Get Reservation by ID",
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{customer_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/booking/reservations/{{bookingId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "booking", "reservations", "{{bookingId}}"]
+            },
+            "description": "Gets detailed information about a specific reservation."
+          },
+          "response": []
+        },
+        {
+          "name": "[CUSTOMER] Update Reservation",
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{customer_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "PATCH",
+            "header": [],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"numParticipants\": 3\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/booking/reservations/{{bookingId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "booking", "reservations", "{{bookingId}}"]
+            },
+            "description": "Updates the number of participants for a confirmed reservation. Will recalculate total price."
+          },
+          "response": []
+        },
+        {
+          "name": "[CUSTOMER] Cancel Reservation",
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{customer_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "PATCH",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/booking/reservations/{{bookingId}}/cancel",
+              "host": ["{{baseUrl}}"],
+              "path": [
+                "api",
+                "booking",
+                "reservations",
+                "{{bookingId}}",
+                "cancel"
+              ]
+            },
+            "description": "Cancels a reservation and restores the available slots."
+          },
+          "response": []
+        },
+        {
+          "name": "[CUSTOMER] Pay for Reservation",
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{customer_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"cardNumber\": \"4242424242424242\",\n    \"expiryMonth\": \"12\",\n    \"expiryYear\": \"2030\",\n    \"cvc\": \"123\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/booking/reservations/{{bookingId}}/pay",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "booking", "reservations", "{{bookingId}}", "pay"]
+            },
+            "description": "Submits payment for a reservation that is AWAITING_PAYMENT. Changes status to CONFIRMED."
+          },
+          "response": []
+        },
+        {
+          "name": "[STRIPE] Create Payment Intent",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"amount\": 70000,\n    \"currency\": \"mad\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/booking/payment",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "booking", "payment"]
+            },
+            "description": "Creates a Stripe payment intent for frontend integration. Amount should be in cents (70000 = 700.00 MAD)."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Partner Service",
+      "item": [
+        {
+          "name": "[PARTNER] Get Partner Bookings",
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{partner_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/partner/bookings?page=1&limit=10&status=PENDING&listingId={{listingId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "partner", "bookings"],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "1"
+                },
+                {
+                  "key": "limit",
+                  "value": "10"
+                },
+                {
+                  "key": "status",
+                  "value": "PENDING",
+                  "disabled": true
+                },
+                {
+                  "key": "listingId",
+                  "value": "{{listingId}}",
+                  "disabled": true
+                }
+              ]
+            },
+            "description": "Gets all bookings for the partner's listings with optional filtering by status and listing."
+          },
+          "response": []
+        },
+        {
+          "name": "[PARTNER] Get Booking by ID",
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{partner_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/partner/bookings/{{bookingId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "partner", "bookings", "{{bookingId}}"]
+            },
+            "description": "Gets detailed information about a specific booking for the partner."
+          },
+          "response": []
+        },
+        {
+          "name": "[PARTNER] Get Dashboard Stats",
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{partner_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/partner/stats?startDate=2025-01-01&endDate=2025-12-31",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "partner", "stats"],
+              "query": [
+                {
+                  "key": "startDate",
+                  "value": "2025-01-01",
+                  "disabled": true
+                },
+                {
+                  "key": "endDate",
+                  "value": "2025-12-31",
+                  "disabled": true
+                }
+              ]
+            },
+            "description": "Gets dashboard statistics for the partner including revenue, bookings, and reviews."
+          },
+          "response": []
+        },
+        {
+          "name": "[PARTNER] Approve Reservation",
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{partner_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "PATCH",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/partner/bookings/{{bookingId}}/approve",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "partner", "bookings", "{{bookingId}}", "approve"]
+            },
+            "description": "Approves a pending reservation and moves it to AWAITING_PAYMENT status."
+          },
+          "response": []
+        },
+        {
+          "name": "[PARTNER] Cancel Reservation",
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{partner_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "PATCH",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/partner/bookings/{{bookingId}}/cancel",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "partner", "bookings", "{{bookingId}}", "cancel"]
+            },
+            "description": "Cancels a reservation and restores the available slots."
+          },
+          "response": []
+        },
+        {
+          "name": "[PARTNER] Create Promotion",
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{partner_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"name\": \"Summer Special 2025\",\n    \"description\": \"20% off all activities during summer season\",\n    \"type\": \"PERCENTAGE_DISCOUNT\",\n    \"value\": 20,\n    \"startDate\": \"2025-06-01T00:00:00.000Z\",\n    \"endDate\": \"2025-08-31T23:59:59.000Z\",\n    \"isActive\": true\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/partner/promotions",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "partner", "promotions"]
+            },
+            "description": "Creates a new promotion for the partner's listings. Saves the promotionId."
+          },
+          "response": []
+        },
+        {
+          "name": "[PARTNER] Get Promotions",
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{partner_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/partner/promotions",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "partner", "promotions"]
+            },
+            "description": "Gets all promotions created by the partner."
+          },
+          "response": []
+        },
+        {
+          "name": "[PARTNER] Apply Promotion to Listings",
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{partner_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"listingIds\": [\"{{listingId}}\"]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/partner/promotions/{{promotionId}}/apply",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "partner", "promotions", "{{promotionId}}", "apply"]
+            },
+            "description": "Applies a promotion to selected listings."
+          },
+          "response": []
+        },
+        {
+          "name": "[PARTNER] Get Schedules for Listing",
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{partner_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/partner/listings/{{listingId}}/schedules",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "partner", "listings", "{{listingId}}", "schedules"]
+            },
+            "description": "Gets all pricing schedules for a specific listing."
+          },
+          "response": []
+        },
+        {
+          "name": "[PARTNER] Create Schedule",
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{partner_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"startTime\": \"2025-09-15T10:00:00.000Z\",\n    \"endTime\": \"2025-09-15T13:00:00.000Z\",\n    \"price\": 275.00,\n    \"capacity\": 8,\n    \"isAvailable\": true\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/partner/listings/{{listingId}}/schedules",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "partner", "listings", "{{listingId}}", "schedules"]
+            },
+            "description": "Creates a new pricing schedule for a listing. Will auto-publish listing if it's in DRAFT status."
+          },
+          "response": []
+        },
+        {
+          "name": "[PARTNER] Create Bulk Schedules",
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{partner_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"schedules\": [\n        {\n            \"startTime\": \"2025-09-20T10:00:00.000Z\",\n            \"endTime\": \"2025-09-20T13:00:00.000Z\",\n            \"price\": 275.00,\n            \"capacity\": 8,\n            \"isAvailable\": true\n        },\n        {\n            \"startTime\": \"2025-09-21T10:00:00.000Z\",\n            \"endTime\": \"2025-09-21T13:00:00.000Z\",\n            \"price\": 275.00,\n            \"capacity\": 8,\n            \"isAvailable\": true\n        },\n        {\n            \"startTime\": \"2025-09-22T14:00:00.000Z\",\n            \"endTime\": \"2025-09-22T17:00:00.000Z\",\n            \"price\": 300.00,\n            \"capacity\": 10,\n            \"isAvailable\": true\n        }\n    ],\n    \"publishListing\": true\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/partner/listings/{{listingId}}/schedules/bulk",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "partner", "listings", "{{listingId}}", "schedules", "bulk"]
+            },
+            "description": "Creates multiple pricing schedules at once for a listing. Optionally publishes the listing."
+          },
+          "response": []
+        },
+        {
+          "name": "[PARTNER] Update Schedule",
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{partner_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "PUT",
+            "header": [],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"price\": 320.00,\n    \"capacity\": 12,\n    \"isAvailable\": true\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/partner/schedules/{{scheduleId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "partner", "schedules", "{{scheduleId}}"]
+            },
+            "description": "Updates an existing pricing schedule."
+          },
+          "response": []
+        },
+        {
+          "name": "[PARTNER] Delete Schedule",
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{partner_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/partner/schedules/{{scheduleId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "partner", "schedules", "{{scheduleId}}"]
+            },
+            "description": "Deletes a pricing schedule. Will auto-draft listing if no schedules remain."
+          },
+          "response": []
+        },
+        {
+          "name": "[PARTNER] Get Listing Performance Stats",
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{partner_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/partner/listings/{{listingId}}/performance?startDate=2025-01-01&endDate=2025-12-31",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "partner", "listings", "{{listingId}}", "performance"],
+              "query": [
+                {
+                  "key": "startDate",
+                  "value": "2025-01-01"
+                },
+                {
+                  "key": "endDate",
+                  "value": "2025-12-31"
+                }
+              ]
+            },
+            "description": "Gets performance statistics for a specific listing including views and bookings over time."
+          },
+          "response": []
+        }
+      ]
     }
   ]
 }

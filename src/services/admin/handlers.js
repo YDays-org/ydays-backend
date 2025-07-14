@@ -2,7 +2,6 @@ import prisma from "../../lib/prisma.js";
 import admin from "../../config/firebase.js";
 
 // --- Category Handlers ---
-
 export const createCategory = async (req, res) => {
   try {
     const category = await prisma.category.create({
@@ -62,9 +61,7 @@ export const deleteCategory = async (req, res) => {
   }
 };
 
-
 // --- Amenity Handlers ---
-
 export const createAmenity = async (req, res) => {
   try {
     const amenity = await prisma.amenity.create({
@@ -124,31 +121,55 @@ export const deleteAmenity = async (req, res) => {
 };
 
 // --- User Management Handlers ---
-
 export const listUsers = async (req, res) => {
-  const { page, limit } = req.query;
+  const { page = 1, limit = 20 } = req.query;
 
   try {
+    const take = parseInt(limit, 10);
+    const skip = (parseInt(page, 10) - 1) * take;
+
     const users = await prisma.user.findMany({
-      skip: (page - 1) * limit,
-      take: limit,
+      skip: skip,
+      take: take,
       orderBy: { createdAt: "desc" },
     });
-    const total = await prisma.user.count();
+
+    const totalFromDb = await prisma.user.count();
+    const total = Number(totalFromDb);
+
     res.status(200).json({
       success: true,
       data: users,
       pagination: {
         total,
-        page,
-        limit,
-        totalPages: Math.ceil(total / limit),
+        page: parseInt(page, 10),
+        limit: take,
+        totalPages: Math.ceil(total / take),
       },
     });
   } catch (error) {
     res.status(500).json({ success: false, message: "Failed to fetch users.", error: error.message });
   }
 };
+
+export const getUserById = async (req, res) => {
+  const { id: userId } = req.params;
+  try {
+    const user = await prisma.user.findUnique({
+      where: { id: userId }
+    })
+
+    if (!user) {
+      return res.status(404).json({ success: false, message: 'User not found.' });
+    }
+
+    res.status(200).json({ success: true, data: user });
+  } catch (error) {
+    console.log(error);
+    res.status(500).json({ success: false, message: "Failed to get user", error: error.message });
+
+  }
+}
 
 export const updateUserRole = async (req, res) => {
   const { userId } = req.params;
@@ -157,13 +178,21 @@ export const updateUserRole = async (req, res) => {
 
   try {
     const user = await prisma.user.findUnique({ where: { id: userId } });
+    console.log(user)
 
     if (!user) {
       return res.status(404).json({ success: false, message: 'User not found.' });
     }
     oldRole = user.role;
 
-    // It's safer to update Firebase first. If it fails, we haven't touched our DB.
+    if (oldRole === newRole) {
+      return res.status(200).json({
+        success: true,
+        message: "User role is already set to the desired value.",
+        data: user
+      });
+    }
+
     await admin.auth().setCustomUserClaims(userId, { role: newRole });
 
     // Now, update our local database
@@ -173,7 +202,6 @@ export const updateUserRole = async (req, res) => {
     });
 
     res.status(200).json({ success: true, message: "User role updated successfully.", data: updatedUser });
-
   } catch (error) {
     // If the database update fails after Firebase was updated, we must attempt a rollback.
     if (oldRole) {
