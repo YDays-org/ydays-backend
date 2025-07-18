@@ -5,8 +5,8 @@ const LONGITUDE_REGEX = /^-?((([1-9]?[0-9]|1[0-7][0-9])(\.\d{1,6})?)|180(\.0{1,6
 
 // --- Reusable common schemas ---
 const openingHoursSchema = Joi.object({
-  openAt: Joi.string().pattern(/^([0-1]?[0-9]|2[0-3]):[0-5][0-9]$/).required(),
-  closeAt: Joi.string().pattern(/^([0-1]?[0-9]|2[0-3]):[0-5][0-9]$/).required(),
+  openAt: Joi.string().required(),
+  closeAt: Joi.string().required(),
 });
 
 // --- Metadata Schemas (Type-Specific) ---
