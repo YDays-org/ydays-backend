@@ -17,11 +17,11 @@ CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 CREATE EXTENSION IF NOT EXISTS postgis;
 
 -- CUSTOM TYPES --
-DO $$ BEGIN CREATE TYPE user_role AS ENUM ('CUSTOMER', 'PARTNER', 'ADMIN'); EXCEPTION WHEN duplicate_object THEN null; END $$;
-DO $$ BEGIN CREATE TYPE listing_type AS ENUM ('ACTIVITY', 'EVENT', 'RESTAURANT'); EXCEPTION WHEN duplicate_object THEN null; END $$;
-DO $$ BEGIN CREATE TYPE listing_status AS ENUM ('PUBLISHED', 'DRAFT', 'ARCHIVED'); EXCEPTION WHEN duplicate_object THEN null; END $$;
-DO $$ BEGIN CREATE TYPE media_type AS ENUM ('IMAGE', 'VIDEO'); EXCEPTION WHEN duplicate_object THEN null; END $$;
-DO $$ BEGIN CREATE TYPE booking_status AS ENUM ('PENDING', 'CONFIRMED', 'CANCELLED', 'COMPLETED', 'AWAITING_PAYMENT'); EXCEPTION WHEN duplicate_object THEN null; END $$;
+DO $$ BEGIN CREATE TYPE user_role AS ENUM ('customer', 'partner', 'admin'); EXCEPTION WHEN duplicate_object THEN null; END $$;
+DO $$ BEGIN CREATE TYPE listing_type AS ENUM ('activity', 'event', 'restaurant'); EXCEPTION WHEN duplicate_object THEN null; END $$;
+DO $$ BEGIN CREATE TYPE listing_status AS ENUM ('published', 'draft', 'archived'); EXCEPTION WHEN duplicate_object THEN null; END $$;
+DO $$ BEGIN CREATE TYPE media_type AS ENUM ('image', 'video'); EXCEPTION WHEN duplicate_object THEN null; END $$;
+DO $$ BEGIN CREATE TYPE booking_status AS ENUM ('pending', 'confirmed', 'cancelled', 'completed', 'awaiting_payment'); EXCEPTION WHEN duplicate_object THEN null; END $$;
 
 -- ★ NEW ★ ENUMs for new features
 DO $$ BEGIN
@@ -34,24 +34,24 @@ EXCEPTION WHEN duplicate_object THEN null; END $$;
 
 DO $$ BEGIN
     CREATE TYPE payment_status AS ENUM (
-        'PENDING',
-        'SUCCEEDED',
-        'FAILED',
-        'REFUNDED',
-        'PARTIALLY_REFUNDED'
+        'pending',
+        'succeeded',
+        'failed',
+        'refunded',
+        'partially_refunded'
     );
 EXCEPTION WHEN duplicate_object THEN null; END $$;
 
 DO $$ BEGIN
     CREATE TYPE notification_type AS ENUM (
-        'NEW_BOOKING_REQUEST',
-        'USER_CANCELLED_BOOKING',
-        'BOOKING_PAID',
-        'BOOKING_APPROVED_FOR_PAYMENT',
-        'BOOKING_CONFIRMED',
-        'BOOKING_CANCELLED_BY_PARTNER',
-        'BOOKING_MODIFIED',
-        'RESERVATION_REMINDER'
+        'new_booking_request',
+        'user_cancelled_booking',
+        'booking_paid',
+        'booking_approved_for_payment',
+        'booking_confirmed',
+        'booking_cancelled_by_partner',
+        'booking_modified',
+        'reservation_reminder'
     );
 EXCEPTION WHEN duplicate_object THEN null; END $$;
 
@@ -113,7 +113,7 @@ CREATE TABLE IF NOT EXISTS listings (
     metadata JSONB,
     cancellation_policy TEXT,
     accessibility_info TEXT,
-    status listing_status NOT NULL DEFAULT 'DRAFT',
+    status listing_status NOT NULL DEFAULT 'draft',
     average_rating NUMERIC(3, 2) DEFAULT 0,
     review_count INT DEFAULT 0,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
@@ -161,7 +161,7 @@ CREATE TABLE IF NOT EXISTS bookings (
     schedule_id UUID NOT NULL REFERENCES pricing_schedules(id),
     num_participants INT NOT NULL,
     total_price NUMERIC(10, 2) NOT NULL,
-    status booking_status NOT NULL DEFAULT 'PENDING',
+    status booking_status NOT NULL DEFAULT 'pending',
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
@@ -237,7 +237,7 @@ CREATE TABLE IF NOT EXISTS payments (
     user_id VARCHAR(255) NOT NULL REFERENCES users(id),
     amount NUMERIC(10, 2) NOT NULL,
     currency VARCHAR(3) NOT NULL,
-    status payment_status NOT NULL DEFAULT 'PENDING',
+    status payment_status NOT NULL DEFAULT 'pending',
     payment_gateway VARCHAR(50) NOT NULL,
     gateway_transaction_id VARCHAR(255) UNIQUE NOT NULL,
     payment_method_details JSONB,

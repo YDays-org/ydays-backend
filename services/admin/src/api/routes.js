@@ -1,17 +1,15 @@
 import { Router } from "express";
-import {
-  validationMiddleware,
-  roleCheck,
-  authMiddleware,
-} from "@casablanca/common";
+import { validationMiddleware } from "../../common/middlewares/validation.js";
+import { roleCheck } from "../../common/middlewares/roles.js";
 import * as adminHandlers from "./handlers.js";
 import * as adminSchemas from "./validation.js";
+import { authMiddleware } from "../../common/middlewares/auth.js";
 
 const router = Router();
 
 // Protect all routes in this service with authentication and role check
 router.use(authMiddleware);
-router.use(roleCheck(["ADMIN"]));
+router.use(roleCheck(["admin"]));
 
 // --- Category Routes ---
 router.post(
@@ -57,12 +55,6 @@ router.get(
   "/users",
   validationMiddleware(adminSchemas.listUsersSchema),
   adminHandlers.listUsers
-);
-
-router.get(
-  "/users/:userId",
-  validationMiddleware(adminSchemas.userIdParamSchema),
-  adminHandlers.getUserById
 );
 
 router.patch(

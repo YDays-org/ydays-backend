@@ -18,7 +18,7 @@ export const submitReview = async (req, res) => {
         throw new Error("You can only review your own bookings.");
       }
       // Uncomment this line if reviews should only be for 'completed' bookings
-      // if (booking.status !== 'COMPLETED') {
+      // if (booking.status !== 'completed') {
       //   throw new Error("You can only review completed bookings.");
       // }
 
@@ -102,7 +102,7 @@ export const getReviewsForListing = async (req, res) => {
 export const addPartnerReply = async (req, res) => {
   const { id: reviewId } = req.params;
   const { reply } = req.body;
-  const partnerId = req.user?.id;
+  const partnerId = req.user.partner?.id;
 
   try {
     // 1. Find the review and its associated listing
