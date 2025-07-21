@@ -8,6 +8,17 @@ export const uploadSingleMedia = async (req, res) => {
   const partnerId = req.user.partner?.id;
   let uploadedAssetPublicId = null;
 
+  console.log('------------');
+  console.log(listingId);
+  console.log('------------');
+  console.log(caption);
+  console.log('------------');
+  console.log(isCover);
+  console.log('------------');
+  console.log(file);
+  
+  
+  
   if (!file) {
     return res.status(400).json({ error: 'No file was uploaded.' });
   }
@@ -30,7 +41,7 @@ export const uploadSingleMedia = async (req, res) => {
         data: {
           listingId,
           mediaUrl: cloudinaryResult.secure_url,
-          mediaType: getMediaType(file.mimetype),
+          mediaType: getMediaType(file.mimetype).toLowerCase(),
           caption: caption || null,
           isCover: Boolean(isCover),
         },
@@ -88,7 +99,7 @@ export const uploadMultipleMedia = async (req, res) => {
       const mediaDataArray = cloudinaryResults.map((result, index) => ({
         listingId,
         mediaUrl: result.secure_url,
-        mediaType: getMediaType(files[index].mimetype),
+        mediaType: getMediaType(files[index].mimetype).toLowerCase(),
         caption: Array.isArray(captions) ? (captions[index] || null) : null,
         isCover: index === 0,
       }));

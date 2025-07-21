@@ -125,8 +125,9 @@ export const deleteAmenity = async (req, res) => {
 
 // --- User Management Handlers ---
 
-export const listUsers = async (req, res) => {
-  const { page, limit } = req.query;
+export const listUsers = async (req, res) => {  
+  const page = parseInt(req.query.page) || 1;
+  const limit = parseInt(req.query.limit) || 10;
 
   try {
     const users = await prisma.user.findMany({

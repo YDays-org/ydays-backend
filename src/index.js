@@ -19,7 +19,7 @@ dotenvExpand.expand(envConfig);
 app.use(helmet());
 app.use(
   cors({
-    origin: process.env.CORS_ORIGINS ? process.env.CORS_ORIGINS.split(',') : '*',
+    origin: '*',
     methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     credentials: true,
   })

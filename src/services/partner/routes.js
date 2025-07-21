@@ -11,55 +11,55 @@ router.use(authMiddleware);
 
 router.get(
   "/bookings",
-  roleCheck(["PARTNER"]),
+  roleCheck(["partner"]),
   validationMiddleware(partnerSchemas.getPartnerBookingsSchema),
   partnerHandlers.getPartnerBookings
 );
 
 router.get(
   "/bookings/:id",
-  roleCheck(["PARTNER"]),
+  roleCheck(["partner"]),
   validationMiddleware(partnerSchemas.bookingIdParamSchema),
   partnerHandlers.getPartnerBookingById
 );
 
 router.get(
   "/stats",
-  roleCheck(["PARTNER"]),
+  roleCheck(["partner"]),
   validationMiddleware(partnerSchemas.getStatsSchema),
   partnerHandlers.getPartnerDashboardStats
 );
 
 router.patch(
   "/bookings/:id/approve",
-  roleCheck(["PARTNER"]),
+  roleCheck(["partner"]),
   validationMiddleware(partnerSchemas.bookingIdParamSchema),
   partnerHandlers.approveReservationByPartner
 );
 
 router.patch(
   "/bookings/:id/cancel",
-  roleCheck(["PARTNER"]),
+  roleCheck(["partner"]),
   validationMiddleware(partnerSchemas.bookingIdParamSchema),
   partnerHandlers.cancelReservationByPartner
 );
 
 router.post(
   "/promotions",
-  roleCheck(["PARTNER"]),
+  roleCheck(["partner"]),
   validationMiddleware(partnerSchemas.createPromotionSchema),
   partnerHandlers.createPromotion
 );
 
 router.get(
   "/promotions",
-  roleCheck(["PARTNER"]),
+  roleCheck(["partner"]),
   partnerHandlers.getPromotions
 );
 
 router.post(
   "/promotions/:promotionId/apply",
-  roleCheck(["PARTNER"]),
+  roleCheck(["partner"]),
   validationMiddleware(partnerSchemas.applyPromotionSchema),
   partnerHandlers.applyPromotionToListings
 );
@@ -67,35 +67,35 @@ router.post(
 // --- Schedule Management ---
 router.get(
   "/listings/:listingId/schedules",
-  roleCheck(["PARTNER"]),
+  roleCheck(["partner"]),
   validationMiddleware(partnerSchemas.listingIdParamSchema),
   partnerHandlers.getSchedulesForListing
 );
 
 router.post(
   "/listings/:listingId/schedules",
-  roleCheck(["PARTNER"]),
+  roleCheck(["partner"]),
   validationMiddleware(partnerSchemas.createScheduleSchema),
   partnerHandlers.createSchedule
 );
 
 router.put(
   "/schedules/:scheduleId",
-  roleCheck(["PARTNER"]),
+  roleCheck(["partner"]),
   validationMiddleware(partnerSchemas.updateScheduleSchema),
   partnerHandlers.updateSchedule
 );
 
 router.delete(
   "/schedules/:scheduleId",
-  roleCheck(["PARTNER"]),
+  roleCheck(["partner"]),
   validationMiddleware(partnerSchemas.scheduleIdParamSchema),
   partnerHandlers.deleteSchedule
 );
 
 router.get(
   "/listings/:listingId/performance",
-  roleCheck(["PARTNER"]),
+  roleCheck(["partner"]),
   validationMiddleware(partnerSchemas.getListingPerformanceStatsSchema),
   partnerHandlers.getListingPerformanceStats
 );

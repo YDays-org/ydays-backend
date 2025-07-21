@@ -9,7 +9,10 @@ export const getListings = async (req, res) => {
     page = 1, limit = 10
   } = req.query;
 
-  const offset = (page - 1) * limit;
+  // Convert page and limit to integers
+  const pageInt = parseInt(page, 10) || 1;
+  const limitInt = parseInt(limit, 10) || 10;
+  const offset = (pageInt - 1) * limitInt;
   const amenityIds = amenities ? amenities.split(',').map(id => parseInt(id.trim(), 10)).filter(Number.isInteger) : [];
 
   // Separate where conditions for different parts of the query
@@ -69,29 +72,32 @@ export const getListings = async (req, res) => {
   const subquery = Prisma.sql`
     SELECT
         l.id,
-        MIN(lp.final_price) as cheapest_price,
+        lp.final_price as cheapest_price,
+        lp.capacity as capacity,
         l.average_rating,
         l.review_count
     FROM listings l
     JOIN (
-        SELECT
+        SELECT DISTINCT ON (ps.listing_id)
             ps.listing_id,
             CASE
                 WHEN promo.type = 'PERCENTAGE_DISCOUNT' THEN ps.price * (1 - promo.value / 100)
                 WHEN promo.type = 'FIXED_AMOUNT_DISCOUNT' THEN ps.price - promo.value
                 ELSE ps.price
-            END AS final_price
+            END AS final_price,
+            ps.capacity
         FROM pricing_schedules ps
         LEFT JOIN listing_promotions lp_join ON ps.listing_id = lp_join.listing_id
         LEFT JOIN promotions promo ON lp_join.promotion_id = promo.id
             AND promo.is_active = TRUE
             AND NOW() BETWEEN promo.start_date AND promo.end_date
         ${scheduleWhereClause}
+        ORDER BY ps.listing_id, final_price ASC
     ) as lp ON l.id = lp.listing_id
     ${finalJoins}
     JOIN categories c ON l.category_id = c.id
     WHERE ${listingWhereClause}
-    GROUP BY l.id, l.average_rating, l.review_count
+    GROUP BY l.id, lp.final_price, lp.capacity, l.average_rating, l.review_count
     ${havingClause}
   `;
 
@@ -118,6 +124,7 @@ export const getListings = async (req, res) => {
       l.created_at,
       l.updated_at,
       filtered.cheapest_price,
+      filtered.capacity,
       (
         SELECT jsonb_build_object('mediaUrl', lm.media_url, 'isCover', lm.is_cover)
         FROM listing_media lm
@@ -127,7 +134,7 @@ export const getListings = async (req, res) => {
     FROM listings l
     JOIN (${subquery}) as filtered ON l.id = filtered.id
     ORDER BY filtered.average_rating DESC, filtered.review_count DESC
-    LIMIT ${limit}
+    LIMIT ${limitInt}
     OFFSET ${offset};
   `;
 
@@ -144,9 +151,9 @@ export const getListings = async (req, res) => {
       data: listings,
       pagination: {
         total: Number(total),
-        page,
-        limit,
-        totalPages: Math.ceil(Number(total) / limit),
+        page: pageInt,
+        limit: limitInt,
+        totalPages: Math.ceil(Number(total) / limitInt),
       },
     });
   } catch (error) {
@@ -314,47 +321,135 @@ export const getTrendingListings = async (req, res) => {
 
 // PARTNER-PROTECTED HANDLERS
 export const createListing = async (req, res) => {
+  console.log("🚀 CREATE LISTING - START", { 
+    userId: req.user?.id, 
+    partnerId: req.user?.partner?.id,
+    requestBodyKeys: Object.keys(req.body)
+  });
+
   const { amenityIds, location, ...listingData } = req.body;
   const partnerId = req.user.partner?.id;
 
+  console.log("📝 CREATE LISTING - Parsed data", { 
+    partnerId, 
+    hasLocation: !!location,
+    locationData: location,
+    amenityCount: amenityIds?.length || 0,
+    listingDataKeys: Object.keys(listingData)
+  });
+
   if (!partnerId) {
+    console.log("❌ CREATE LISTING - EARLY EXIT: User is not a partner", { userId: req.user?.id, partnerId });
     return res.status(403).json({ success: false, message: "User is not a partner." });
   }
 
   try {
+    console.log("🔄 CREATE LISTING - Starting transaction...");
+    
+    // Validate location data upfront since it's required
+    if (!location?.lat || !location?.lon) {
+      console.log("❌ CREATE LISTING - Missing location data", { location });
+      return res.status(400).json({ 
+        success: false, 
+        message: "Location coordinates (lat, lon) are required for creating a listing" 
+      });
+    }
+    
     const newListing = await prisma.$transaction(async (tx) => {
-      const listing = await tx.listing.create({
-        data: {
+      console.log("💾 CREATE LISTING - Creating listing in DB with raw SQL", { 
+        listingData: {
           ...listingData,
-          partner: { connect: { id: partnerId } },
-          amenities: amenityIds
-            ? {
-              create: amenityIds.map((id) => ({
-                amenity: { connect: { id } },
-              })),
-            }
-            : undefined,
-        },
+          partnerId: partnerId,
+          location: { lat: location.lat, lon: location.lon }
+        }
       });
 
-      if (location?.lat && location?.lon) {
-        await tx.$executeRaw`
-          UPDATE listings
-          SET location = ST_MakePoint(${location.lon}, ${location.lat})::geography
-          WHERE id = ${listing.id}
-        `;
+      // Use raw SQL to create the listing because Prisma doesn't support PostGIS geography
+      const listingResult = await tx.$queryRaw`
+        INSERT INTO listings (
+          id, partner_id, category_id, type, title, description, address, 
+          location, phone_number, website_url, opening_hours, working_days, 
+          metadata, cancellation_policy, accessibility_info, status, 
+          created_at, updated_at
+        ) VALUES (
+          gen_random_uuid()::text,
+          ${partnerId}::text,
+          ${listingData.categoryId || null}::integer,
+          ${listingData.type}::"ListingType",
+          ${listingData.title}::text,
+          ${listingData.description || null}::text,
+          ${listingData.address}::text,
+          ST_MakePoint(${location.lon}, ${location.lat})::geography,
+          ${listingData.phoneNumber || null}::text,
+          ${listingData.website || null}::text,
+          ${listingData.openingHours ? JSON.stringify(listingData.openingHours) : null}::jsonb,
+          ${listingData.workingDays || []}::text[],
+          ${listingData.metadata ? JSON.stringify(listingData.metadata) : null}::jsonb,
+          ${listingData.cancellationPolicy || null}::text,
+          ${listingData.accessibilityInfo || null}::text,
+          ${listingData.status || 'draft'}::"ListingStatus",
+          NOW(),
+          NOW()
+        )
+        RETURNING id
+      `;
+
+      const createdListingId = listingResult[0]?.id;
+      if (!createdListingId) {
+        throw new Error("Failed to create listing - no ID returned");
       }
 
-      return listing;
+      console.log("✅ CREATE LISTING - Listing created", { listingId: createdListingId });
+
+      // Now handle amenities if provided
+      if (amenityIds && amenityIds.length > 0) {
+        console.log("🔗 CREATE LISTING - Creating amenity relations", { amenityIds });
+        
+        for (const amenityId of amenityIds) {
+          await tx.listingAmenity.create({
+            data: {
+              listingId: createdListingId,
+              amenityId: amenityId
+            }
+          });
+        }
+        
+        console.log("✅ CREATE LISTING - Amenities linked");
+      }
+
+      return { id: createdListingId };
     });
+
+    console.log("🔍 CREATE LISTING - Fetching final listing with relations", { listingId: newListing.id });
 
     const finalListing = await prisma.listing.findUnique({
       where: { id: newListing.id },
-      include: { amenities: { include: { amenity: true } }, category: true },
+      include: { 
+        amenities: { include: { amenity: true } }, 
+        category: true 
+      },
+    });
+
+    if (!finalListing) {
+      throw new Error("Failed to fetch created listing");
+    }
+
+    console.log("🎉 CREATE LISTING - SUCCESS", { 
+      listingId: finalListing.id,
+      title: finalListing.title,
+      categoryId: finalListing.categoryId,
+      amenityCount: finalListing.amenities?.length || 0
     });
 
     res.status(201).json({ success: true, data: finalListing });
   } catch (error) {
+    console.error("💥 CREATE LISTING - ERROR", { 
+      error: error.message,
+      code: error.code,
+      meta: error.meta,
+      stack: error.stack
+    });
+    
     res.status(500).json({ success: false, message: "Failed to create listing.", error: error.message });
   }
 };
@@ -549,3 +644,4 @@ export const getPersonalizedFeed = async (req, res) => {
     res.status(500).json({ success: false, message: "Failed to fetch personalized feed.", error: error.message });
   }
 };
+
