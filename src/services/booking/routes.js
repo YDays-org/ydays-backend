@@ -53,8 +53,14 @@ router.post(
 
 router.post(
   "/payment",
-  validationMiddleware(bookingSchemas.paymentSchema),
+  validationMiddleware(bookingSchemas.createPaymentIntentSchema),
   bookingHandlers.processPayment
+);
+
+router.post(
+  "/payment/complete",
+  validationMiddleware(bookingSchemas.completePaymentSchema),
+  bookingHandlers.completePayment
 );
 
 export default router;

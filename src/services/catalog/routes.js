@@ -45,6 +45,18 @@ router.get(
   catalogHandlers.getPersonalizedFeed
 );
 
+router.get(
+  "/favorites",
+  validationMiddleware(catalogSchemas.getFeedSchema), // Reuse same validation (page, limit)
+  catalogHandlers.getFavorites
+);
+
+router.get(
+  "/favorites/:listingId/check",
+  validationMiddleware(catalogSchemas.favoriteParamSchema),
+  catalogHandlers.checkFavorite
+);
+
 router.post(
   "/favorites/:listingId",
   validationMiddleware(catalogSchemas.favoriteParamSchema),
@@ -60,7 +72,7 @@ router.delete(
 // --- Partner-Protected Routes ---
 router.post(
   "/listings",
-  roleCheck(["PARTNER"]),
+  roleCheck(["partner"]),
   validationMiddleware(catalogSchemas.createListingSchema),
   catalogHandlers.createListing
 );

@@ -52,8 +52,8 @@ export const createReservation = async (req, res) => {
   const { id: userId } = req.user;
 
   try {
-    const { newBooking, partnerUser } = await prisma.$transaction(async (tx) => {
-      // Step 1: Fetch schedule and listing details, locking the row.
+    const result = await prisma.$transaction(async (tx) => {
+      // Step 1: Fetch schedule and listing details with locking
       const schedule = await tx.pricingSchedule.findUnique({
         where: { id: scheduleId },
         include: {
@@ -61,13 +61,17 @@ export const createReservation = async (req, res) => {
             include: {
               promotions: {
                 include: { promotion: true },
-                where: { promotion: { isActive: true, startDate: { lte: new Date() }, endDate: { gte: new Date() } } },
+                where: { 
+                  promotion: { 
+                    isActive: true, 
+                    startDate: { lte: new Date() }, 
+                    endDate: { gte: new Date() } 
+                  } 
+                },
                 orderBy: { promotion: { value: 'desc' } }
               },
               partner: {
-                include: {
-                  user: true // We need the partner's user info for notifications
-                }
+                include: { user: true }
               }
             }
           }
@@ -84,29 +88,31 @@ export const createReservation = async (req, res) => {
         throw new Error("Could not find the partner associated with this listing.");
       }
 
+      // Step 2: Check availability
       const availableSlots = schedule.capacity - schedule.bookedSlots;
       if (numParticipants > availableSlots) {
         throw new Error(`Not enough available slots. Only ${availableSlots} left.`);
       }
 
-      // Optimistically increment booked slots. If partner cancels, we'll decrement.
+      // Step 3: Calculate pricing with promotions
+      const activePromotion = listing.promotions[0]?.promotion;
+      let finalPricePerParticipant = schedule.price;
+      if (activePromotion) {
+        if (activePromotion.type === 'PERCENTAGE_DISCOUNT') {
+          finalPricePerParticipant = schedule.price * (1 - (activePromotion.value / 100));
+        } else if (activePromotion.type === 'FIXED_AMOUNT_DISCOUNT') {
+          finalPricePerParticipant = schedule.price - activePromotion.value;
+        }
+      }
+      const totalPrice = finalPricePerParticipant * numParticipants;
+
+      // Step 4: Update pricing schedule (reserve slots)
       await tx.pricingSchedule.update({
         where: { id: scheduleId },
         data: { bookedSlots: { increment: numParticipants } },
       });
 
-      const activePromotion = listing.promotions[0]?.promotion;
-      let finalPricePerParticipant = schedule.price;
-      if (activePromotion) {
-        if (activePromotion.type === 'PERCENTAGE_DISCOUNT') {
-          finalPricePerParticipant *= (1 - (activePromotion.value / 100));
-        } else if (activePromotion.type === 'FIXED_AMOUNT_DISCOUNT') {
-          finalPricePerParticipant -= activePromotion.value;
-        }
-      }
-      const totalPrice = finalPricePerParticipant * numParticipants;
-
-
+      // Step 5: Create booking record
       const newBooking = await tx.booking.create({
         data: {
           userId,
@@ -114,55 +120,161 @@ export const createReservation = async (req, res) => {
           scheduleId,
           numParticipants,
           totalPrice,
-          status: "pending", // Status is now pending partner approval
+          status: totalPrice > 0 ? "awaiting_payment" : "confirmed", // Free bookings auto-confirm
         },
+        include: {
+          listing: {
+            select: { id: true, title: true, partner: { select: { userId: true } } }
+          },
+          user: {
+            select: { id: true, fullName: true, email: true }
+          }
+        }
       });
 
-      // Create a notification for the partner
+      // Step 6: Create payment record (if payment required)
+      let paymentRecord = null;
+      if (totalPrice > 0) {
+        paymentRecord = await tx.payment.create({
+          data: {
+            bookingId: newBooking.id,
+            userId,
+            amount: totalPrice,
+            currency: schedule.currency || 'MAD',
+            status: 'pending',
+            paymentGateway: 'stripe',
+            gatewayTransactionId: `pending_${newBooking.id}` // Will be updated with actual Stripe ID
+          }
+        });
+      }
+
+      // Step 7: Create notifications
+      const notificationType = totalPrice > 0 ? 'new_booking_request' : 'booking_confirmed';
+      const notificationMessage = totalPrice > 0 
+        ? `A new booking for ${numParticipants} person(s) is awaiting payment and approval.`
+        : `A new free booking for ${numParticipants} person(s) has been confirmed.`;
+
+      // Notification for partner
       await tx.notification.create({
         data: {
           userId: partnerUser.id,
-          type: 'new_booking_request',
+          type: notificationType,
           title: `New Booking Request for ${listing.title}`,
-          message: `A new booking for ${numParticipants} person(s) is awaiting your approval.`,
+          message: notificationMessage,
           relatedBookingId: newBooking.id,
           relatedListingId: listing.id,
         },
       });
 
+      // Notification for user (if free booking)
+      if (totalPrice === 0) {
+        await tx.notification.create({
+          data: {
+            userId: newBooking.userId,
+            type: 'booking_confirmed',
+            title: `Booking Confirmed: ${listing.title}`,
+            message: `Your free booking for ${listing.title} has been confirmed.`,
+            relatedBookingId: newBooking.id,
+            relatedListingId: listing.id,
+          },
+        });
 
-      return { newBooking, partnerUser };
+        // Update daily stats for free confirmed bookings
+        await tx.listingDailyStats.upsert({
+          where: {
+            listingId_statDate: {
+              listingId: newBooking.listingId,
+              statDate: new Date(new Date().setHours(0, 0, 0, 0)),
+            }
+          },
+          create: {
+            listingId: newBooking.listingId,
+            statDate: new Date(new Date().setHours(0, 0, 0, 0)),
+            bookingCount: 1,
+          },
+          update: {
+            bookingCount: { increment: 1 },
+          },
+        });
+      }
+
+      return { 
+        newBooking, 
+        partnerUser, 
+        paymentRecord, 
+        requiresPayment: totalPrice > 0,
+        totalPrice 
+      };
     });
 
-    // --- Notifications (outside transaction) ---
-    // 1. Send email to partner
+    // Step 8: Send notifications outside transaction
+    const { newBooking, partnerUser, requiresPayment, totalPrice } = result;
+
+    // Email to partner
+    const emailSubject = requiresPayment 
+      ? `New Booking Request for ${newBooking.listing.title}`
+      : `New Booking Confirmed for ${newBooking.listing.title}`;
+    
+    const emailMessage = requiresPayment
+      ? `A user has requested a booking for ${newBooking.numParticipants} participant(s) and needs to complete payment.`
+      : `A user has confirmed a free booking for ${newBooking.numParticipants} participant(s).`;
+
     sendMail({
       to: partnerUser.email,
-      subject: `New Booking Request for ${newBooking.listing.title}`,
+      subject: emailSubject,
       html: `
-        <h1>New Booking Request</h1>
-        <p>You have a new booking request for your listing: <strong>${newBooking.listing.title}</strong>.</p>
-        <p>A user has requested a booking for ${newBooking.numParticipants} participant(s).</p>
-        <p>Please log in to your dashboard to approve or cancel this reservation.</p>
+        <h1>${emailSubject}</h1>
+        <p>${emailMessage}</p>
+        <p><strong>Booking Details:</strong></p>
+        <ul>
+          <li>Listing: ${newBooking.listing.title}</li>
+          <li>Participants: ${newBooking.numParticipants}</li>
+          <li>Total Price: ${totalPrice} MAD</li>
+          <li>Status: ${newBooking.status}</li>
+        </ul>
+        <p>Please log in to your dashboard to manage this booking.</p>
       `,
-    }).catch(err => console.error("Failed to send new booking email to partner:", err));
+    }).catch(err => console.error("Failed to send booking email to partner:", err));
 
-    // 2. Send socket notification to partner
+    // Socket notification to partner
     const partnerSocketId = userSocketMap[partnerUser.id];
     if (partnerSocketId) {
       io.to(partnerSocketId).emit("new_booking_request", {
-        title: `New Booking Request`,
-        message: `A new booking for ${newBooking.listing.title} is awaiting your approval.`,
+        title: emailSubject,
+        message: emailMessage,
         bookingId: newBooking.id,
+        requiresPayment,
+        totalPrice
       });
     }
 
-    res.status(201).json({
-      success: true,
-      message: "Reservation request sent to the partner for approval.",
-      data: newBooking
-    });
+    // Response based on payment requirement
+    if (requiresPayment) {
+      res.status(201).json({
+        success: true,
+        message: "Booking created successfully. Please complete payment to confirm.",
+        data: {
+          booking: newBooking,
+          requiresPayment: true,
+          totalPrice: totalPrice,
+          paymentStatus: 'pending'
+        }
+      });
+    } else {
+      res.status(201).json({
+        success: true,
+        message: "Free booking confirmed successfully.",
+        data: {
+          booking: newBooking,
+          requiresPayment: false,
+          totalPrice: 0,
+          paymentStatus: 'not_required'
+        }
+      });
+    }
+
   } catch (error) {
+    console.error("Booking creation error:", error);
     res.status(400).json({ success: false, message: error.message });
   }
 };
@@ -496,5 +608,173 @@ export const processPayment = async (req, res) => {
       message: "Failed to create payment intent.",
       error: error.message,
     });
+  }
+};
+
+// New payment completion handler for Stripe integration
+export const completePayment = async (req, res) => {
+  const { bookingId, paymentIntentId, paymentMethodDetails } = req.body;
+  const { id: userId } = req.user;
+
+  try {
+    // Verify payment with Stripe
+    const paymentIntent = await stripe.paymentIntents.retrieve(paymentIntentId);
+    
+    if (paymentIntent.status !== 'succeeded') {
+      return res.status(400).json({ 
+        success: false, 
+        message: 'Payment was not successful' 
+      });
+    }
+
+    const result = await prisma.$transaction(async (tx) => {
+      // 1. Validate the booking
+      const booking = await tx.booking.findUnique({
+        where: { id: bookingId },
+        include: { 
+          listing: { 
+            include: { 
+              partner: { include: { user: true } } 
+            } 
+          }, 
+          user: true,
+          payment: true
+        },
+      });
+
+      if (!booking) throw new Error("Booking not found.");
+      if (booking.userId !== userId) throw new Error("Unauthorized to complete this payment.");
+      if (booking.status !== 'awaiting_payment') {
+        throw new Error(`Cannot complete payment for booking with status: ${booking.status}`);
+      }
+
+      // 2. Update payment record
+      await tx.payment.update({
+        where: { bookingId: bookingId },
+        data: {
+          status: 'succeeded',
+          gatewayTransactionId: paymentIntentId,
+          paymentMethodDetails: paymentMethodDetails || {
+            brand: paymentIntent.charges?.data?.[0]?.payment_method_details?.card?.brand || 'unknown',
+            last4: paymentIntent.charges?.data?.[0]?.payment_method_details?.card?.last4 || 'xxxx',
+            exp_month: paymentIntent.charges?.data?.[0]?.payment_method_details?.card?.exp_month || 12,
+            exp_year: paymentIntent.charges?.data?.[0]?.payment_method_details?.card?.exp_year || 2025
+          },
+          updatedAt: new Date()
+        },
+      });
+
+      // 3. Update booking status
+      const confirmedBooking = await tx.booking.update({
+        where: { id: bookingId },
+        data: { status: 'confirmed' },
+      });
+
+      // 4. Create confirmation notifications
+      // For user
+      await tx.notification.create({
+        data: {
+          userId: booking.userId,
+          type: 'booking_confirmed',
+          title: `Booking Confirmed: ${booking.listing.title}`,
+          message: `Your payment was successful! Your booking for ${booking.listing.title} is confirmed.`,
+          relatedBookingId: confirmedBooking.id,
+          relatedListingId: booking.listingId,
+        },
+      });
+
+      // For partner
+      await tx.notification.create({
+        data: {
+          userId: booking.listing.partner.userId,
+          type: 'booking_paid',
+          title: `Payment Received for ${booking.listing.title}`,
+          message: `${booking.user.fullName} has completed payment for their booking.`,
+          relatedBookingId: confirmedBooking.id,
+          relatedListingId: booking.listingId,
+        },
+      });
+
+      // 5. Update listing daily stats
+      await tx.listingDailyStats.upsert({
+        where: {
+          listingId_statDate: {
+            listingId: confirmedBooking.listingId,
+            statDate: new Date(new Date().setHours(0, 0, 0, 0)),
+          }
+        },
+        create: {
+          listingId: confirmedBooking.listingId,
+          statDate: new Date(new Date().setHours(0, 0, 0, 0)),
+          bookingCount: 1,
+        },
+        update: {
+          bookingCount: { increment: 1 },
+        },
+      });
+
+      return { 
+        booking: confirmedBooking, 
+        partner: booking.listing.partner,
+        user: booking.user,
+        listing: booking.listing
+      };
+    });
+
+    // 6. Send success notifications outside transaction
+    const { booking, partner, user, listing } = result;
+
+    // Email to user
+    sendMail({
+      to: user.email,
+      subject: `Booking Confirmed: ${listing.title}`,
+      html: `
+        <h1>Booking Confirmed!</h1>
+        <p>Hi ${user.fullName},</p>
+        <p>Your payment was successful and your booking for <strong>${listing.title}</strong> is now confirmed.</p>
+        <p><strong>Booking Details:</strong></p>
+        <ul>
+          <li>Participants: ${booking.numParticipants}</li>
+          <li>Total Paid: ${booking.totalPrice} MAD</li>
+          <li>Status: Confirmed</li>
+        </ul>
+        <p>We look forward to seeing you!</p>
+      `,
+    }).catch(err => console.error("Failed to send confirmation email to user:", err));
+
+    // Socket notifications
+    const userSocketId = userSocketMap[user.id];
+    if (userSocketId) {
+      io.to(userSocketId).emit("booking_confirmed", {
+        title: `Booking Confirmed: ${listing.title}`,
+        message: 'Your payment was successful and your booking is confirmed.',
+        bookingId: booking.id,
+        status: 'confirmed'
+      });
+    }
+
+    const partnerSocketId = userSocketMap[partner.userId];
+    if (partnerSocketId) {
+      io.to(partnerSocketId).emit("booking_paid", {
+        title: `Payment Received for ${listing.title}`,
+        message: `${user.fullName} has completed payment for their booking.`,
+        bookingId: booking.id,
+        amount: booking.totalPrice
+      });
+    }
+
+    res.status(200).json({
+      success: true,
+      message: "Payment completed successfully. Booking confirmed.",
+      data: {
+        booking: booking,
+        paymentStatus: 'succeeded',
+        bookingStatus: 'confirmed'
+      }
+    });
+
+  } catch (error) {
+    console.error("Payment completion error:", error);
+    res.status(400).json({ success: false, message: error.message });
   }
 };

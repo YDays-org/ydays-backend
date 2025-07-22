@@ -9,7 +9,10 @@ export const getListings = async (req, res) => {
     page = 1, limit = 10
   } = req.query;
 
-  const offset = (page - 1) * limit;
+  // Convert page and limit to integers
+  const pageInt = parseInt(page, 10) || 1;
+  const limitInt = parseInt(limit, 10) || 10;
+  const offset = (pageInt - 1) * limitInt;
   const amenityIds = amenities ? amenities.split(',').map(id => parseInt(id.trim(), 10)).filter(Number.isInteger) : [];
 
   // Separate where conditions for different parts of the query
@@ -127,7 +130,7 @@ export const getListings = async (req, res) => {
     FROM listings l
     JOIN (${subquery}) as filtered ON l.id = filtered.id
     ORDER BY filtered.average_rating DESC, filtered.review_count DESC
-    LIMIT ${limit}
+    LIMIT ${limitInt}
     OFFSET ${offset};
   `;
 
@@ -144,9 +147,9 @@ export const getListings = async (req, res) => {
       data: listings,
       pagination: {
         total: Number(total),
-        page,
-        limit,
-        totalPages: Math.ceil(Number(total) / limit),
+        page: pageInt,
+        limit: limitInt,
+        totalPages: Math.ceil(Number(total) / limitInt),
       },
     });
   } catch (error) {
@@ -169,8 +172,40 @@ export const getListingById = async (req, res) => {
             companyName: true,
             companyAddress: true,
             websiteUrl: true,
+            user: {
+              select: {
+                email: true,
+                phoneNumber: true,
+              }
+            }
           },
         },
+        schedules: {
+          where: {
+            isAvailable: true,
+            endTime: {
+              gte: new Date()
+            }
+          },
+          orderBy: {
+            startTime: 'asc'
+          },
+          take: 10
+        },
+        reviews: {
+          include: {
+            user: {
+              select: {
+                fullName: true,
+                profilePictureUrl: true
+              }
+            }
+          },
+          orderBy: {
+            createdAt: 'desc'
+          },
+          take: 5
+        }
       },
     });
 
@@ -221,14 +256,18 @@ export const getAmenities = async (req, res) => {
 };
 
 export const getNewListings = async (req, res) => {
-  const { page, limit } = req.query;
+  const { page = 1, limit = 10 } = req.query;
+
+  // Convert page and limit to integers
+  const pageInt = parseInt(page, 10) || 1;
+  const limitInt = parseInt(limit, 10) || 10;
 
   try {
     const listings = await prisma.listing.findMany({
       where: { status: 'published' },
       orderBy: { createdAt: 'desc' },
-      take: limit,
-      skip: (page - 1) * limit,
+      take: limitInt,
+      skip: (pageInt - 1) * limitInt,
       include: {
         media: { where: { isCover: true }, take: 1 },
       },
@@ -241,9 +280,9 @@ export const getNewListings = async (req, res) => {
       data: listings,
       pagination: {
         total,
-        page,
-        limit,
-        totalPages: Math.ceil(total / limit),
+        page: pageInt,
+        limit: limitInt,
+        totalPages: Math.ceil(total / limitInt),
       },
     });
   } catch (error) {
@@ -252,8 +291,13 @@ export const getNewListings = async (req, res) => {
 };
 
 export const getTrendingListings = async (req, res) => {
-  const { page, limit } = req.query;
+  const { page = 1, limit = 10 } = req.query;
   const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+
+  // Convert page and limit to integers
+  const pageInt = parseInt(page, 10) || 1;
+  const limitInt = parseInt(limit, 10) || 10;
+  const offset = (pageInt - 1) * limitInt;
 
   // This raw query calculates a trend score and fetches the listings.
   // Score = (total views * 1) + (total bookings * 3) in the last 7 days.
@@ -278,8 +322,8 @@ export const getTrendingListings = async (req, res) => {
     ) s ON l.id = s.listing_id
     WHERE l.status = 'published'
     ORDER BY s.trend_score DESC, l.average_rating DESC
-    LIMIT ${limit}
-    OFFSET ${(page - 1) * limit};
+    LIMIT ${limitInt}
+    OFFSET ${offset};
   `;
 
   const countQuery = Prisma.sql`
@@ -301,9 +345,9 @@ export const getTrendingListings = async (req, res) => {
       data: listings,
       pagination: {
         total,
-        page,
-        limit,
-        totalPages: Math.ceil(total / limit),
+        page: pageInt,
+        limit: limitInt,
+        totalPages: Math.ceil(total / limitInt),
       },
     });
   } catch (error) {
@@ -314,47 +358,135 @@ export const getTrendingListings = async (req, res) => {
 
 // PARTNER-PROTECTED HANDLERS
 export const createListing = async (req, res) => {
+  console.log("🚀 CREATE LISTING - START", { 
+    userId: req.user?.id, 
+    partnerId: req.user?.partner?.id,
+    requestBodyKeys: Object.keys(req.body)
+  });
+
   const { amenityIds, location, ...listingData } = req.body;
   const partnerId = req.user.partner?.id;
 
+  console.log("📝 CREATE LISTING - Parsed data", { 
+    partnerId, 
+    hasLocation: !!location,
+    locationData: location,
+    amenityCount: amenityIds?.length || 0,
+    listingDataKeys: Object.keys(listingData)
+  });
+
   if (!partnerId) {
+    console.log("❌ CREATE LISTING - EARLY EXIT: User is not a partner", { userId: req.user?.id, partnerId });
     return res.status(403).json({ success: false, message: "User is not a partner." });
   }
 
   try {
+    console.log("🔄 CREATE LISTING - Starting transaction...");
+    
+    // Validate location data upfront since it's required
+    if (!location?.lat || !location?.lon) {
+      console.log("❌ CREATE LISTING - Missing location data", { location });
+      return res.status(400).json({ 
+        success: false, 
+        message: "Location coordinates (lat, lon) are required for creating a listing" 
+      });
+    }
+    
     const newListing = await prisma.$transaction(async (tx) => {
-      const listing = await tx.listing.create({
-        data: {
+      console.log("💾 CREATE LISTING - Creating listing in DB with raw SQL", { 
+        listingData: {
           ...listingData,
-          partner: { connect: { id: partnerId } },
-          amenities: amenityIds
-            ? {
-              create: amenityIds.map((id) => ({
-                amenity: { connect: { id } },
-              })),
-            }
-            : undefined,
-        },
+          partnerId: partnerId,
+          location: { lat: location.lat, lon: location.lon }
+        }
       });
 
-      if (location?.lat && location?.lon) {
-        await tx.$executeRaw`
-          UPDATE listings
-          SET location = ST_MakePoint(${location.lon}, ${location.lat})::geography
-          WHERE id = ${listing.id}
-        `;
+      // Use raw SQL to create the listing because Prisma doesn't support PostGIS geography
+      const listingResult = await tx.$queryRaw`
+        INSERT INTO listings (
+          id, partner_id, category_id, type, title, description, address, 
+          location, phone_number, website_url, opening_hours, working_days, 
+          metadata, cancellation_policy, accessibility_info, status, 
+          created_at, updated_at
+        ) VALUES (
+          gen_random_uuid()::text,
+          ${partnerId}::text,
+          ${listingData.categoryId || null}::integer,
+          ${listingData.type}::"ListingType",
+          ${listingData.title}::text,
+          ${listingData.description || null}::text,
+          ${listingData.address}::text,
+          ST_MakePoint(${location.lon}, ${location.lat})::geography,
+          ${listingData.phoneNumber || null}::text,
+          ${listingData.website || null}::text,
+          ${listingData.openingHours ? JSON.stringify(listingData.openingHours) : null}::jsonb,
+          ${listingData.workingDays || []}::text[],
+          ${listingData.metadata ? JSON.stringify(listingData.metadata) : null}::jsonb,
+          ${listingData.cancellationPolicy || null}::text,
+          ${listingData.accessibilityInfo || null}::text,
+          ${listingData.status || 'draft'}::"ListingStatus",
+          NOW(),
+          NOW()
+        )
+        RETURNING id
+      `;
+
+      const createdListingId = listingResult[0]?.id;
+      if (!createdListingId) {
+        throw new Error("Failed to create listing - no ID returned");
       }
 
-      return listing;
+      console.log("✅ CREATE LISTING - Listing created", { listingId: createdListingId });
+
+      // Now handle amenities if provided
+      if (amenityIds && amenityIds.length > 0) {
+        console.log("🔗 CREATE LISTING - Creating amenity relations", { amenityIds });
+        
+        for (const amenityId of amenityIds) {
+          await tx.listingAmenity.create({
+            data: {
+              listingId: createdListingId,
+              amenityId: amenityId
+            }
+          });
+        }
+        
+        console.log("✅ CREATE LISTING - Amenities linked");
+      }
+
+      return { id: createdListingId };
     });
+
+    console.log("🔍 CREATE LISTING - Fetching final listing with relations", { listingId: newListing.id });
 
     const finalListing = await prisma.listing.findUnique({
       where: { id: newListing.id },
-      include: { amenities: { include: { amenity: true } }, category: true },
+      include: { 
+        amenities: { include: { amenity: true } }, 
+        category: true 
+      },
+    });
+
+    if (!finalListing) {
+      throw new Error("Failed to fetch created listing");
+    }
+
+    console.log("🎉 CREATE LISTING - SUCCESS", { 
+      listingId: finalListing.id,
+      title: finalListing.title,
+      categoryId: finalListing.categoryId,
+      amenityCount: finalListing.amenities?.length || 0
     });
 
     res.status(201).json({ success: true, data: finalListing });
   } catch (error) {
+    console.error("💥 CREATE LISTING - ERROR", { 
+      error: error.message,
+      code: error.code,
+      meta: error.meta,
+      stack: error.stack
+    });
+    
     res.status(500).json({ success: false, message: "Failed to create listing.", error: error.message });
   }
 };
@@ -476,9 +608,120 @@ export const removeFavorite = async (req, res) => {
   }
 };
 
+export const getFavorites = async (req, res) => {
+  const { id: userId } = req.user;
+  const { page = 1, limit = 20, type } = req.query;
+
+  try {
+    const skip = (parseInt(page) - 1) * parseInt(limit);
+    
+    const where = {
+      userId,
+      ...(type && {
+        listing: {
+          type: type.toUpperCase()
+        }
+      })
+    };
+
+    const favorites = await prisma.favorite.findMany({
+      where,
+      include: {
+        listing: {
+          include: {
+            category: true,
+            partner: {
+              include: {
+                user: {
+                  select: {
+                    fullName: true,
+                    email: true
+                  }
+                }
+              }
+            },
+            media: {
+              where: { isCover: true },
+              take: 1
+            },
+            _count: {
+              select: {
+                reviews: true,
+                bookings: true
+              }
+            }
+          }
+        }
+      },
+      orderBy: {
+        createdAt: 'desc'
+      },
+      skip,
+      take: parseInt(limit)
+    });
+
+    const total = await prisma.favorite.count({ where });
+
+    res.status(200).json({
+      success: true,
+      data: favorites,
+      pagination: {
+        total,
+        page: parseInt(page),
+        limit: parseInt(limit),
+        totalPages: Math.ceil(total / parseInt(limit))
+      }
+    });
+
+  } catch (error) {
+    console.error("Get favorites error:", error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to fetch favorites",
+      error: error.message
+    });
+  }
+};
+
+export const checkFavorite = async (req, res) => {
+  const { listingId } = req.params;
+  const { id: userId } = req.user;
+
+  try {
+    const favorite = await prisma.favorite.findUnique({
+      where: {
+        userId_listingId: {
+          userId,
+          listingId
+        }
+      }
+    });
+
+    res.status(200).json({
+      success: true,
+      data: {
+        isFavorite: !!favorite,
+        addedAt: favorite?.createdAt || null
+      }
+    });
+
+  } catch (error) {
+    console.error("Check favorite error:", error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to check favorite status",
+      error: error.message
+    });
+  }
+};
+
 export const getPersonalizedFeed = async (req, res) => {
   const { id: userId } = req.user;
-  const { page, limit } = req.query;
+  const { page = 1, limit = 20 } = req.query;
+
+  // Convert page and limit to integers
+  const pageInt = parseInt(page, 10) || 1;
+  const limitInt = parseInt(limit, 10) || 20;
 
   try {
     // 1. Find all listings the user has booked or favorited to determine their interests.
@@ -528,8 +771,8 @@ export const getPersonalizedFeed = async (req, res) => {
         { averageRating: 'desc' },
         { reviewCount: 'desc' },
       ],
-      skip: (page - 1) * limit,
-      take: limit,
+      skip: (pageInt - 1) * limitInt,
+      take: limitInt,
     });
 
     const total = await prisma.listing.count({ where });
@@ -539,9 +782,9 @@ export const getPersonalizedFeed = async (req, res) => {
       data: recommendedListings,
       pagination: {
         total,
-        page,
-        limit,
-        totalPages: Math.ceil(total / limit),
+        page: pageInt,
+        limit: limitInt,
+        totalPages: Math.ceil(total / limitInt),
       },
     });
 
