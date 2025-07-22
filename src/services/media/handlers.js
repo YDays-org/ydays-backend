@@ -5,8 +5,12 @@ import { getMediaType, cleanupTempFile, deleteFromCloudinary, uploadFileToCloudi
 export const uploadSingleMedia = async (req, res) => {
   const { listingId, caption, isCover } = req.body;
   const file = req.file;
-  const partnerId = req.user.id;
+  const partnerId = req.user?.partner?.id;
   let uploadedAssetPublicId = null;
+
+  if (!partnerId) {
+    return res.status(403).json({ error: 'User is not a partner.' });
+  }
 
   console.log('------------');
   console.log(listingId);
@@ -67,8 +71,12 @@ export const uploadSingleMedia = async (req, res) => {
 export const uploadMultipleMedia = async (req, res) => {
   const { listingId, captions } = req.body;
   const files = req.files;
-  const partnerId = req.user?.id;
+  const partnerId = req.user?.partner?.id;
   const uploadedAssets = []; // Store { public_id, path } for rollback and cleanup
+
+  if (!partnerId) {
+    return res.status(403).json({ error: 'User is not a partner.' });
+  }
 
   if (!files || files.length === 0) {
     return res.status(400).json({ error: 'No files were uploaded.' });

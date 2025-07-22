@@ -76,35 +76,43 @@ export const createListingSchema = {
     description: Joi.string().required(),
     type: Joi.string().valid("activity", "event", "restaurant").required(),
     address: Joi.string().required(),
-    status: Joi.string().valid("PUBLISHED", "DRAFT", "ARCHIVED").default("DRAFT"),
+    status: Joi.string().valid("published", "draft", "archived").default("draft"),
     location: Joi.object({
       lat: Joi.number().required(),
       lon: Joi.number().required(),
     }).required(),
     phoneNumber: Joi.string().allow(null, ''),
+    phone_number: Joi.string().allow(null, ''), // Alternative snake_case version
     website: Joi.string().uri().allow(null, ''),
-    openingHours: openingHoursSchema,
+    website_url: Joi.string().uri().allow(null, ''), // Alternative snake_case version
+    openingHours: Joi.object().allow(null), // Allow any JSON structure for opening hours
+    opening_hours: Joi.object().allow(null), // Alternative snake_case version
     workingDays: Joi.array().items(Joi.string()),
+    working_days: Joi.array().items(Joi.string()), // Alternative snake_case version
     categoryId: Joi.number().integer(),
+    category_id: Joi.number().integer(), // Alternative snake_case version
     cancellationPolicy: Joi.string().allow(null, ''),
+    cancellation_policy: Joi.string().allow(null, ''), // Alternative snake_case version
     accessibilityInfo: Joi.string().allow(null, ''),
+    accessibility_info: Joi.string().allow(null, ''), // Alternative snake_case version
     amenityIds: Joi.array().items(Joi.number().integer()),
+    amenity_ids: Joi.array().items(Joi.number().integer()), // Alternative snake_case version
 
-    // Type-specific Metadata
-    metadata: Joi.when('type', {
-      is: 'restaurant',
-      then: restaurantMetadataSchema.required(),
-      otherwise: Joi.when('type', {
-        is: 'event',
-        then: eventMetadataSchema.required(),
-        otherwise: Joi.when('type', {
-          is: 'activity',
-          then: activityMetadataSchema.required(),
-          otherwise: Joi.forbidden(),
-        }),
-      }),
-    }),
-  }),
+    // Type-specific Metadata - Allow any JSON structure for now
+    metadata: Joi.object().allow(null),
+    
+    // Additional flexible fields that might be sent from frontend
+    schedules: Joi.array().items(Joi.object({
+      startTime: Joi.date().iso().allow(null),
+      start_time: Joi.date().iso().allow(null),
+      endTime: Joi.date().iso().allow(null),
+      end_time: Joi.date().iso().allow(null),
+      price: Joi.number().positive().allow(null),
+      capacity: Joi.number().integer().positive().allow(null),
+    })).allow(null),
+    
+    // Legacy/alternative field names that should be ignored/transformed
+  }).unknown(true), // Allow unknown fields for flexibility
 };
 
 export const updateListingSchema = {
@@ -123,7 +131,7 @@ export const updateListingSchema = {
     }),
     phoneNumber: Joi.string().allow(null, ''),
     website: Joi.string().uri().allow(null, ''),
-    openingHours: openingHoursSchema,
+    openingHours: Joi.object().allow(null), // Allow any JSON structure
     workingDays: Joi.array().items(Joi.string()),
     categoryId: Joi.number().integer(),
     cancellationPolicy: Joi.string().allow(null, ''),
@@ -131,8 +139,8 @@ export const updateListingSchema = {
     status: Joi.string().valid("published", "draft", "archived"),
     amenityIds: Joi.array().items(Joi.number().integer()),
 
-    // Type-specific Metadata
-    metadata: Joi.object(), // Allow partial updates on metadata
+    // Type-specific Metadata - Allow any structure for updates
+    metadata: Joi.object().allow(null),
   }).min(1),
 };
 

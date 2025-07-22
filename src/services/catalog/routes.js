@@ -37,34 +37,37 @@ router.get("/categories", catalogHandlers.getCategories);
 router.get("/amenities", catalogHandlers.getAmenities);
 
 // --- User-Protected Routes ---
-// router.use(authMiddleware);
-
 router.get(
   "/feed",
+  authMiddleware,
   validationMiddleware(catalogSchemas.getFeedSchema),
   catalogHandlers.getPersonalizedFeed
 );
 
 router.get(
   "/favorites",
+  authMiddleware,
   validationMiddleware(catalogSchemas.getFeedSchema), // Reuse same validation (page, limit)
   catalogHandlers.getFavorites
 );
 
 router.get(
   "/favorites/:listingId/check",
+  authMiddleware,
   validationMiddleware(catalogSchemas.favoriteParamSchema),
   catalogHandlers.checkFavorite
 );
 
 router.post(
   "/favorites/:listingId",
+  authMiddleware,
   validationMiddleware(catalogSchemas.favoriteParamSchema),
   catalogHandlers.addFavorite
 );
 
 router.delete(
   "/favorites/:listingId",
+  authMiddleware,
   validationMiddleware(catalogSchemas.favoriteParamSchema),
   catalogHandlers.removeFavorite
 );
@@ -72,13 +75,15 @@ router.delete(
 // --- Partner-Protected Routes ---
 router.post(
   "/listings",
-  // roleCheck(["partner"]),
-  // validationMiddleware(catalogSchemas.createListingSchema),
+  authMiddleware,
+  roleCheck(["partner"]),
+  validationMiddleware(catalogSchemas.createListingSchema),
   catalogHandlers.createListing
 );
 
 router.put(
   "/listings/:id",
+  authMiddleware,
   roleCheck(["partner"]),
   validationMiddleware(catalogSchemas.updateListingSchema),
   catalogHandlers.updateListing
@@ -86,6 +91,7 @@ router.put(
 
 router.delete(
   "/listings/:id",
+  authMiddleware,
   roleCheck(["partner"]),
   validationMiddleware(catalogSchemas.listingIdParamSchema),
   catalogHandlers.deleteListing

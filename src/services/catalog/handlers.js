@@ -422,7 +422,7 @@ export const createListing = async (req, res) => {
           ${listingData.address}::text,
           ST_MakePoint(${location.lon}, ${location.lat})::geography,
           ${listingData.phoneNumber || null}::text,
-          ${listingData.website || null}::text,
+          ${listingData.website_url || null}::text,
           ${listingData.openingHours ? JSON.stringify(listingData.openingHours) : null}::jsonb,
           ${listingData.workingDays || []}::text[],
           ${listingData.metadata ? JSON.stringify(listingData.metadata) : null}::jsonb,
@@ -498,10 +498,29 @@ export const createListing = async (req, res) => {
 export const updateListing = async (req, res) => {
   const { id } = req.params;
   const { amenityIds, location, ...updateData } = req.body;
-  const partnerId = req.user?.id;
+  const partnerId = req.user?.partner?.id;
+console.log("🚀 UPDATE LISTING - START", 
+  { 
+    userId: req.user?.id, 
+    partnerId, 
+    listingId: id,
+    requestBodyKeys: Object.keys(req.body)
+  });
+  
+  if (!partnerId) {
+    return res.status(403).json({ success: false, message: "User is not a partner." });
+  }
 
   try {
     const existingListing = await prisma.listing.findUnique({ where: { id } });
+    console.log("📝 UPDATE LISTING - Existing listing found", 
+      { 
+        listingId: id, 
+        partnerId: existingListing?.partnerId,
+        hasLocation: !!location,
+        amenityCount: amenityIds?.length || 0,
+        updateDataKeys: Object.keys(updateData)
+      });
     if (!existingListing || existingListing.partnerId !== partnerId) {
       return res.status(403).json({ success: false, message: "Forbidden: You do not own this listing." });
     }
@@ -552,7 +571,11 @@ export const updateListing = async (req, res) => {
 
 export const deleteListing = async (req, res) => {
   const { id } = req.params;
-  const partnerId = req.user?.id;
+  const partnerId = req.user?.partner?.id;
+
+  if (!partnerId) {
+    return res.status(403).json({ success: false, message: "User is not a partner." });
+  }
 
   try {
     const existingListing = await prisma.listing.findUnique({ where: { id } });
