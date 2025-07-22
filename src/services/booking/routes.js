@@ -13,7 +13,7 @@ router.get(
 );
 
 // All subsequent routes require authentication
-router.use(authMiddleware);
+// router.use(authMiddleware);
 
 router.post(
   "/reservations",
@@ -53,8 +53,14 @@ router.post(
 
 router.post(
   "/payment",
-  validationMiddleware(bookingSchemas.paymentSchema),
+  validationMiddleware(bookingSchemas.createPaymentIntentSchema),
   bookingHandlers.processPayment
+);
+
+router.post(
+  "/payment/complete",
+  validationMiddleware(bookingSchemas.completePaymentSchema),
+  bookingHandlers.completePayment
 );
 
 export default router;

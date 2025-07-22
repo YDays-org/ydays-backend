@@ -55,3 +55,23 @@ export const stripePaymentSchema = {
     currency: Joi.string().length(3).required(),
   }),
 };
+
+export const completePaymentSchema = {
+  body: Joi.object({
+    bookingId: Joi.string().uuid().required(),
+    paymentIntentId: Joi.string().required(),
+    paymentMethodDetails: Joi.object({
+      brand: Joi.string().optional(),
+      last4: Joi.string().length(4).optional(),
+      exp_month: Joi.number().integer().min(1).max(12).optional(),
+      exp_year: Joi.number().integer().min(2024).optional()
+    }).optional()
+  })
+};
+
+export const createPaymentIntentSchema = {
+  body: Joi.object({
+    amount: Joi.number().integer().min(1).required(),
+    currency: Joi.string().valid('mad', 'usd', 'eur').default('mad').required()
+  })
+};

@@ -37,12 +37,24 @@ router.get("/categories", catalogHandlers.getCategories);
 router.get("/amenities", catalogHandlers.getAmenities);
 
 // --- User-Protected Routes ---
-router.use(authMiddleware);
+// router.use(authMiddleware);
 
 router.get(
   "/feed",
   validationMiddleware(catalogSchemas.getFeedSchema),
   catalogHandlers.getPersonalizedFeed
+);
+
+router.get(
+  "/favorites",
+  validationMiddleware(catalogSchemas.getFeedSchema), // Reuse same validation (page, limit)
+  catalogHandlers.getFavorites
+);
+
+router.get(
+  "/favorites/:listingId/check",
+  validationMiddleware(catalogSchemas.favoriteParamSchema),
+  catalogHandlers.checkFavorite
 );
 
 router.post(
