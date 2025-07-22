@@ -72,29 +72,32 @@ export const getListings = async (req, res) => {
   const subquery = Prisma.sql`
     SELECT
         l.id,
-        MIN(lp.final_price) as cheapest_price,
+        lp.final_price as cheapest_price,
+        lp.capacity as capacity,
         l.average_rating,
         l.review_count
     FROM listings l
     JOIN (
-        SELECT
+        SELECT DISTINCT ON (ps.listing_id)
             ps.listing_id,
             CASE
                 WHEN promo.type = 'PERCENTAGE_DISCOUNT' THEN ps.price * (1 - promo.value / 100)
                 WHEN promo.type = 'FIXED_AMOUNT_DISCOUNT' THEN ps.price - promo.value
                 ELSE ps.price
-            END AS final_price
+            END AS final_price,
+            ps.capacity
         FROM pricing_schedules ps
         LEFT JOIN listing_promotions lp_join ON ps.listing_id = lp_join.listing_id
         LEFT JOIN promotions promo ON lp_join.promotion_id = promo.id
             AND promo.is_active = TRUE
             AND NOW() BETWEEN promo.start_date AND promo.end_date
         ${scheduleWhereClause}
+        ORDER BY ps.listing_id, final_price ASC
     ) as lp ON l.id = lp.listing_id
     ${finalJoins}
     JOIN categories c ON l.category_id = c.id
     WHERE ${listingWhereClause}
-    GROUP BY l.id, l.average_rating, l.review_count
+    GROUP BY l.id, lp.final_price, lp.capacity, l.average_rating, l.review_count
     ${havingClause}
   `;
 
@@ -121,6 +124,7 @@ export const getListings = async (req, res) => {
       l.created_at,
       l.updated_at,
       filtered.cheapest_price,
+      filtered.capacity,
       (
         SELECT jsonb_build_object('mediaUrl', lm.media_url, 'isCover', lm.is_cover)
         FROM listing_media lm
@@ -792,3 +796,4 @@ export const getPersonalizedFeed = async (req, res) => {
     res.status(500).json({ success: false, message: "Failed to fetch personalized feed.", error: error.message });
   }
 };
+

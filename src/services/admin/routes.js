@@ -9,7 +9,7 @@ const router = Router();
 
 // Protect all routes in this service with authentication and role check
 router.use(authMiddleware);
-router.use(roleCheck(["ADMIN"]));
+router.use(roleCheck(["admin"]));
 
 // --- Category Routes ---
 router.post(
