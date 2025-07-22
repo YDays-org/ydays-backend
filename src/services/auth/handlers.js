@@ -96,6 +96,7 @@ export const updateProfile = async (req, res) => {
       fullName: req.body.fullName,
       profilePictureUrl: req.body.profilePictureUrl,
       phoneNumber: req.body.phoneNumber,
+      // OMIT email, phoneNumber, and role for customer.
     };
 
     // Filter out any undefined values so we don't overwrite existing fields with null
@@ -160,69 +161,66 @@ export const sendVerificationEmail = async (req, res) => {
 export const requestPasswordReset = async (req, res) => {
   const { email } = req.body;
   try {
-    // First check if the user exists in our database
     const user = await prisma.user.findUnique({
       where: { email }
     });
 
     if (!user) {
-      // For security, don't reveal that the email doesn't exist
-      return res.status(200).json({ 
-        success: true, 
-        message: `Si un compte associé à ${email} existe, un lien de réinitialisation de mot de passe a été envoyé.` 
+      return res.status(200).json({
+        success: true,
+        message: `If an account associated with ${email} exists, a password reset link has been sent.`
       });
     }
 
     // Get the user from Firebase to check their provider data
     try {
       const firebaseUser = await admin.auth().getUserByEmail(email);
-      console.log(firebaseUser)
       // Check if the user has provider data (e.g., Google, Facebook, etc.)
-      const isNativeUser = firebaseUser.providerData[0].providerId === 'phone'||firebaseUser.providerData[1].providerId === 'password';
-      
+      const isNativeUser = firebaseUser.providerData[0].providerId === 'phone' || firebaseUser.providerData[1].providerId === 'password';
+
       if (!isNativeUser) {
         // User is registered with a third-party provider
-        return res.status(400).json({ 
-          success: false, 
-          error: `Ce compte utilise une authentification externe (Google, Facebook, etc.). Veuillez vous connecter avec cette méthode.` 
+        return res.status(400).json({
+          success: false,
+          error: `This account uses an external authentication provider (Google, Facebook, etc.). Please sign in using that method.`
         });
       }
-      
+
       // Generate password reset link for native users
       const resetLink = await admin.auth().generatePasswordResetLink(email);
-      
+
       // Send the reset email
       await sendMail({
         to: email,
-        subject: "Réinitialisation de votre mot de passe",
+        subject: "Reset Your Password",
         html: `
-          <h1>Réinitialisation de mot de passe</h1>
-          <p>Vous avez demandé une réinitialisation de mot de passe. Cliquez sur le lien ci-dessous pour définir un nouveau mot de passe :</p>
-          <a href="${resetLink}" target="_blank">Réinitialiser mon mot de passe</a>
-          <p>Ce lien expirera dans 1 heure. Si vous n'avez pas demandé cette réinitialisation, veuillez ignorer cet email.</p>
+          <h1>Password Reset</h1>
+          <p>You have requested a password reset. Click the link below to set a new password:</p>
+          <a href="${resetLink}" target="_blank">Reset My Password</a>
+          <p>This link will expire in 1 hour. If you did not request this reset, please ignore this email.</p>
         `,
       });
-      
-      return res.status(200).json({ 
-        success: true, 
-        message: `Un lien de réinitialisation a été envoyé à ${email}.` 
+
+      return res.status(200).json({
+        success: true,
+        message: `A reset link has been sent to ${email}.`
       });
-      
+
     } catch (firebaseError) {
       console.error("Firebase error when checking user:", firebaseError);
       // If there's an issue with Firebase but we know the user exists in our DB
-      return res.status(500).json({ 
-        success: false, 
-        error: "Une erreur s'est produite lors de la vérification de votre compte. Veuillez réessayer ultérieurement." 
+      return res.status(500).json({
+        success: false,
+        error: "An error occurred while verifying your account. Please try again later."
       });
     }
-    
   } catch (error) {
     // Handle any other errors
     console.error("Password reset request failed:", error);
-    return res.status(500).json({ 
-      success: false, 
-      error: "Une erreur s'est produite lors du traitement de votre demande. Veuillez réessayer ultérieurement." 
+    res.status(200).json({ success: true, message: `If an account with ${email} exists, a password reset link has been sent.` });
+    return res.status(500).json({
+      success: false,
+      error: "An error occurred while processing your request. Please try again later."
     });
   }
 };

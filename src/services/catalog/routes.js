@@ -37,7 +37,7 @@ router.get("/categories", catalogHandlers.getCategories);
 router.get("/amenities", catalogHandlers.getAmenities);
 
 // --- User-Protected Routes ---
-router.use(authMiddleware);
+// router.use(authMiddleware);
 
 router.get(
   "/feed",

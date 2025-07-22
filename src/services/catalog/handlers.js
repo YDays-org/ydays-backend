@@ -498,7 +498,7 @@ export const createListing = async (req, res) => {
 export const updateListing = async (req, res) => {
   const { id } = req.params;
   const { amenityIds, location, ...updateData } = req.body;
-  const partnerId = req.user.partner?.id;
+  const partnerId = req.user?.id;
 
   try {
     const existingListing = await prisma.listing.findUnique({ where: { id } });
@@ -552,7 +552,7 @@ export const updateListing = async (req, res) => {
 
 export const deleteListing = async (req, res) => {
   const { id } = req.params;
-  const partnerId = req.user.partner?.id;
+  const partnerId = req.user?.id;
 
   try {
     const existingListing = await prisma.listing.findUnique({ where: { id } });
