@@ -7,7 +7,7 @@ import { authMiddleware } from "../../common/middlewares/auth.js";
 
 const router = Router();
 
-// router.use(authMiddleware);
+router.use(authMiddleware);
 
 router.get(
   "/bookings",

@@ -3,7 +3,7 @@ import { sendMail } from "../../lib/email.js";
 import { io, userSocketMap } from "../../config/socket.js";
 
 export const getPartnerBookings = async (req, res) => {
-  const partnerId = req.user?.id;
+  const partnerId = req.user.partner?.id;
   const { page, limit, status, listingId } = req.query;
 
   if (!partnerId) {
@@ -55,7 +55,7 @@ export const getPartnerBookings = async (req, res) => {
 
 export const getPartnerBookingById = async (req, res) => {
   const { id } = req.params;
-  const partnerId = req.user?.id;
+  const partnerId = req.user.partner?.id;
 
   if (!partnerId) {
     return res.status(403).json({ success: false, message: "User is not a partner." });
@@ -83,7 +83,7 @@ export const getPartnerBookingById = async (req, res) => {
 
 export const createSchedule = async (req, res) => {
   const { listingId } = req.params;
-  const partnerId = req.user?.id;
+  const partnerId = req.user.partner?.id;
   const scheduleData = req.body;
 
   try {
@@ -113,7 +113,7 @@ export const createSchedule = async (req, res) => {
 
 export const getSchedulesForListing = async (req, res) => {
   const { listingId } = req.params;
-  const partnerId = req.user?.id;
+  const partnerId = req.user.partner?.id;
 
   try {
     const listing = await prisma.listing.findFirst({
@@ -137,7 +137,7 @@ export const getSchedulesForListing = async (req, res) => {
 
 export const updateSchedule = async (req, res) => {
   const { scheduleId } = req.params;
-  const partnerId = req.user?.id;
+  const partnerId = req.user.partner?.id;
   const updateData = req.body;
 
   try {
@@ -168,7 +168,7 @@ export const updateSchedule = async (req, res) => {
 
 export const deleteSchedule = async (req, res) => {
   const { scheduleId } = req.params;
-  const partnerId = req.user?.id;
+  const partnerId = req.user.partner?.id;
 
   try {
     const schedule = await prisma.pricingSchedule.findFirst({
@@ -193,7 +193,7 @@ export const deleteSchedule = async (req, res) => {
 };
 
 export const getPartnerDashboardStats = async (req, res) => {
-  const partnerId = req.user?.id;
+  const partnerId = req.user.partner?.id;
   const { startDate, endDate } = req.query;
 
   if (!partnerId) {
@@ -269,7 +269,7 @@ export const getPartnerDashboardStats = async (req, res) => {
 
 export const cancelReservationByPartner = async (req, res) => {
   const { id: bookingId } = req.params;
-  const partnerId = req.user?.id;
+  const partnerId = req.user.partner?.id;
 
   try {
     const { booking, userEmail, userFullName, userId } = await prisma.$transaction(async (tx) => {
@@ -333,7 +333,7 @@ export const cancelReservationByPartner = async (req, res) => {
 
 export const approveReservationByPartner = async (req, res) => {
   const { id: bookingId } = req.params;
-  const partnerId = req.user?.id;
+  const partnerId = req.user.partner?.id;
 
   try {
     const { booking, user } = await prisma.$transaction(async (tx) => {
@@ -411,7 +411,7 @@ export const approveReservationByPartner = async (req, res) => {
 };
 
 export const createPromotion = async (req, res) => {
-  const partnerId = req.user?.id;
+  const partnerId = req.user.partner?.id;
   const promotionData = req.body;
 
   if (!partnerId) {
@@ -432,7 +432,7 @@ export const createPromotion = async (req, res) => {
 };
 
 export const getPromotions = async (req, res) => {
-  const partnerId = req.user?.id;
+  const partnerId = req.user.partner?.id;
 
   if (!partnerId) {
     return res.status(403).json({ success: false, message: "User is not a partner." });
@@ -452,7 +452,7 @@ export const getPromotions = async (req, res) => {
 export const applyPromotionToListings = async (req, res) => {
   const { promotionId } = req.params;
   const { listingIds } = req.body;
-  const partnerId = req.user?.id;
+  const partnerId = req.user.partner?.id;
 
   try {
     const result = await prisma.$transaction(async (tx) => {
@@ -501,7 +501,7 @@ export const applyPromotionToListings = async (req, res) => {
 export const getListingPerformanceStats = async (req, res) => {
   const { listingId } = req.params;
   const { startDate, endDate } = req.query;
-  const partnerId = req.user?.id;
+  const partnerId = req.user.partner?.id;
 
   try {
     const listing = await prisma.listing.findFirst({

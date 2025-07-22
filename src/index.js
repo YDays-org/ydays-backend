@@ -8,7 +8,8 @@ import helmet from "helmet";
 import apiServices from "./services/index.js";
 import prisma from "./lib/prisma.js";
 import { initializeSocket } from "./config/socket.js";
-// import { arcjetMiddleware } from "./common/middlewares/arcjet.js";
+import { arcjetMiddleware } from "./common/middlewares/arcjet.js";
+import backupService from "./services/cache/backup-service.js";
 
 const app = express();
 
@@ -19,9 +20,11 @@ dotenvExpand.expand(envConfig);
 app.use(helmet());
 app.use(
   cors({
-    origin: '*',
+    origin: true, // Allow all origins in development
     methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     credentials: true,
+    allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
+    optionsSuccessStatus: 200,
   })
 );
 app.use(express.json({ limit: "50mb" }));
@@ -41,11 +44,17 @@ app.get("/", (req, res) => {
 const server = http.createServer(app);
 initializeSocket(server);
 
-server.listen(process.env.SERVER_PORT || 3000, () => {
-  console.log(`🚀 Server running in ${process.env.NODE_ENV} mode on port ${process.env.SERVER_PORT}`);
-  if (process.env.NODE_ENV === "development") {
-    console.log(`➜ Local: ${process.env.DEV_SERVER_URL}`);
-  }
+// Initialize backup service
+backupService.initialize().catch(console.error);
+
+server.listen(5000, '0.0.0.0', async () => {
+  console.log(`🚀 Server running in ${process.env.NODE_ENV || 'development'} mode on port 5000`);
+  console.log(`➜ Local: http://localhost:5000`);
+  console.log(`➜ Network: http://0.0.0.0:5000`);
+  console.log(`➜ Android Emulator: http://10.0.2.2:5000`);
+  
+  // Start automated backup (optional - every 6 hours)
+  // backupService.startAutomatedBackup(6);
 });
 
 const gracefulShutdown = async (signal) => {
