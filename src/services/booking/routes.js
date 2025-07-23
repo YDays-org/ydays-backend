@@ -12,6 +12,11 @@ router.get(
   bookingHandlers.getAvailability
 );
 
+router.get(
+  "/reservations/all",
+  bookingHandlers.getAllReservations
+);
+
 // All subsequent routes require authentication
 router.use(authMiddleware);
 

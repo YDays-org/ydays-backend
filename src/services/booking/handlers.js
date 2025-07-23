@@ -359,6 +359,23 @@ export const getReservations = async (req, res) => {
   }
 };
 
+export const getAllReservations = async (req, res) => {
+  try {
+    const bookings = await prisma.booking.findMany({
+      include: {
+        listing: true,
+        user: true,
+      },
+      orderBy: {
+        createdAt: "desc",
+      },
+    });
+    res.status(200).json({ success: true, data: bookings });
+  } catch (error) {
+    res.status(500).json({ success: false, message: "Failed to fetch all reservations.", error: error.message });
+  }
+};
+
 export const getReservationById = async (req, res) => {
   const { id } = req.params;
   const { id: userId } = req.user;
