@@ -25,4 +25,4 @@ dist-ssr
 
 .env
 prisma/migrations
-ydays-reservation-firebase-adminsdk-fbsvc-e38bba35aa.json
+ydays-reservation-*
