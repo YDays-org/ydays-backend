@@ -280,8 +280,18 @@ export const createReservation = async (req, res) => {
 };
 
 export const getReservations = async (req, res) => {
+  // Check if user is authenticated
+  if (!req.user || !req.user.id) {
+    return res.status(401).json({ 
+      success: false, 
+      message: "Authentication required. User not found in request." 
+    });
+  }
+
   const { id: userId } = req.user;
   const { page, limit, status } = req.query;
+
+  console.log('getReservations called for user:', userId, 'with params:', { page, limit, status });
 
   const where = {
     userId,
@@ -297,11 +307,26 @@ export const getReservations = async (req, res) => {
       where,
       include: {
         listing: {
-          select: { id: true, title: true },
+          select: { 
+            id: true, 
+            title: true, 
+            address: true,
+            media: {
+              select: {
+                mediaUrl: true,
+                isCover: true
+              },
+              where: { isCover: true },
+              take: 1
+            }
+          },
         },
         user: {
           select: { id: true, fullName: true, email: true },
         },
+        review: {
+          select: { id: true }
+        }
       },
       skip, // Ensure skip is always passed
       take: parsedLimit,
@@ -312,14 +337,21 @@ export const getReservations = async (req, res) => {
 
     const total = await prisma.booking.count({ where });
 
+    // Transform bookings to match frontend expectations
+    const transformedBookings = bookings.map(booking => ({
+      ...booking,
+      totalAmount: booking.totalPrice, // Map totalPrice to totalAmount
+      reviewed: !!booking.review, // Add reviewed status based on review existence
+    }));
+
     res.status(200).json({
       success: true,
-      data: bookings,
+      data: transformedBookings,
       pagination: {
         total,
-        page,
-        limit,
-        totalPages: Math.ceil(total / limit),
+        page: parsedPage,
+        limit: parsedLimit,
+        totalPages: Math.ceil(total / parsedLimit),
       },
     });
   } catch (error) {
