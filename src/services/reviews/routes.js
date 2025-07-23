@@ -13,16 +13,16 @@ router.get(
   reviewHandlers.getReviewsForListing
 );
 
-// router.use(authMiddleware);
-
 router.post(
   "/",
+  authMiddleware,
   validationMiddleware(reviewSchemas.createReviewSchema),
   reviewHandlers.submitReview
 );
 
 router.put(
   "/:id/reply",
+  authMiddleware,
   roleCheck(["PARTNER"]),
   validationMiddleware(reviewSchemas.addReplySchema),
   reviewHandlers.addPartnerReply
